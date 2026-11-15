@@ -1,0 +1,19 @@
+# Credentials and generated artifacts
+.env
+.env.*
+!.env.example
+*.sql
+*.sql.gz
+*.rrd
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+private.cfg
+!cacti-mrtg-debian13/examples/private.cfg
+*.bak
+*.swp
+.DS_Store
+__pycache__/

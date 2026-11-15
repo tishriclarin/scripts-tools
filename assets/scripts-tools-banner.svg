@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="300" viewBox="0 0 1600 300" role="img" aria-label="scripts-tools reusable network and infrastructure automation">
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#061827"/><stop offset="0.55" stop-color="#10334a"/><stop offset="1" stop-color="#07141e"/></linearGradient><linearGradient id="line" x2="1"><stop stop-color="#35d4e9"/><stop offset="1" stop-color="#65e25d"/></linearGradient></defs>
+<rect width="1600" height="300" fill="url(#bg)"/>
+<g opacity=".11" stroke="#83dbcf"><path d="M0 60H1600 M0 120H1600 M0 180H1600 M0 240H1600 M160 0V300 M320 0V300 M480 0V300 M640 0V300 M800 0V300 M960 0V300 M1120 0V300 M1280 0V300 M1440 0V300"/></g>
+<g fill="none" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M85 202L124 167L165 188L206 119L249 145L299 75"/><path d="M1270 224L1305 190L1350 214L1392 126L1435 148L1500 67"/></g>
+<g fill="#67dd8b"><circle cx="85" cy="202" r="7"/><circle cx="206" cy="119" r="7"/><circle cx="299" cy="75" r="7"/><circle cx="1270" cy="224" r="7"/><circle cx="1392" cy="126" r="7"/><circle cx="1500" cy="67" r="7"/></g>
+<rect x="346" y="51" width="906" height="192" rx="23" fill="#071b27" stroke="#1d6b79" stroke-width="2"/>
+<text x="799" y="127" font-family="DejaVu Sans, Arial, sans-serif" font-size="68" font-weight="bold" text-anchor="middle" fill="#ffffff">scripts-<tspan fill="#6cde82">tools</tspan></text>
+<text x="799" y="177" font-family="DejaVu Sans, Arial, sans-serif" font-size="24" text-anchor="middle" fill="#b9d9de">NETWORK • LINUX • AUTOMATION • INFRASTRUCTURE</text>
+<text x="799" y="215" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" text-anchor="middle" fill="#59bfc8">Reusable tools and scripts · Independent modules · Tested workflows</text>
+</svg>

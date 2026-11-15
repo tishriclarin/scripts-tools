@@ -1,0 +1,7 @@
+*.log
+*.bak
+*.sql
+*.rrd
+*.png
+.env
+*.secret
