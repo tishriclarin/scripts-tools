@@ -1,6 +1,6 @@
 # scripts-tools / cacti-mrtg-debian13
 
-**Debian 13 (Trixie) · Cacti 1.2.30 · MRTG 2.17.10 · v0.1.0 (testing required)**
+**Debian 13 (Trixie) · NGINX + PHP 8.4-FPM · Cacti 1.2.30 · MRTG 2.17.10 · v0.1.1 (testing required)**
 
 This toolset installs Cacti and optional PRIVATE MRTG collection on a fresh Debian 13 server. The Cacti customer portal assigns each local customer account **only its explicitly approved interface/VLAN traffic graphs**, instead of granting device-wide, tree-wide or template-wide access.
 
@@ -23,15 +23,15 @@ sudo bash install_debian13.sh
 sudo cacti_account.sh reset-admin
 ~~~
 
-The script installs Apache, PHP, MariaDB, Cacti, RRDTool, SNMP, MRTG and Debian dbconfig-common. It uses the Debian package defaults for database/template setup, disables anonymous Cacti guest access, installs the account management scripts, disables the stock MRTG service and creates a root-only private MRTG collector directory at **/var/lib/mrtg-private**.
+The script installs NGINX, PHP 8.4-FPM, MariaDB, Cacti, RRDTool, SNMP, MRTG and Debian dbconfig-common. It uses the Debian package defaults for database/template setup, disables anonymous Cacti guest access, installs the account management scripts, disables the stock MRTG service and creates a root-only private MRTG collector directory at **/var/lib/mrtg-private**.
 
 Remote HTTP to the Cacti path is blocked. For initial setup, open a tunnel from your workstation:
 
 ~~~bash
-ssh -L 8080:127.0.0.1:80 admin@MONITORING_SERVER
+ssh -L 8080:127.0.0.1:8080 admin@MONITORING_SERVER
 ~~~
 
-Then open **http://localhost:8080/cacti/**. For clients, configure Apache TLS using a valid certificate and use **https://monitor.example.com/cacti/**. The sample access rule only permits remote Cacti access when *Apache itself* handles HTTPS. If terminating TLS at a proxy, review and deliberately configure TLS forwarding/ACLs; never publish passwords over plaintext HTTP.
+Then open **http://localhost:8080/cacti/**. NGINX binds to server loopback (127.0.0.1:8080) only for the initial SSH-forwarded setup. For customer access, obtain a trusted TLS certificate, copy `examples/nginx-cacti-tls.example.conf` to `/etc/nginx/sites-available/scripts-tools-cacti-tls.conf`, update `server_name` and certificate paths, link it to `sites-enabled`, and run `sudo nginx -t && sudo systemctl reload nginx`. Use **https://monitor.example.com/cacti/**. If a reverse proxy terminates TLS, restrict upstream access and test authentication; never expose plaintext passwords.
 
 ## 3. Add monitored devices in Cacti
 
@@ -131,7 +131,7 @@ The MRTG helper prompts for a read-only SNMPv2c community and configures 64-bit 
 3. Still logged in as A, attempt to fetch B's graph using the direct graph image endpoint, e.g. **/cacti/graph_image.php?local_graph_id=B_GRAPH_ID**. The response must not disclose B's graph. Also test graph detail/export endpoints, plugins and APIs enabled on the server.
 4. Reverse the test: B must not see or fetch A's graph. Check graphs, previews, any user-facing device names and metadata.
 5. Remove A and test both fresh login (must fail) and any existing A session (must not disclose protected data); B must remain functional.
-6. Review Apache aliases and any CDN/reverse-proxy caches. Confirm there is **no** web path for MRTG output.
+6. Review NGINX locations and any CDN/reverse-proxy caches. Confirm there is **no** web path for MRTG output.
 
 **Do not roll out customer access before these tests pass.** Cacti's graph permissions may not provide comprehensive tenant isolation from all device descriptions, plugin data, APIs or cached graph responses. Use separate Cacti instances for isolation-sensitive customers.
 
@@ -141,7 +141,7 @@ The MRTG helper prompts for a read-only SNMPv2c community and configures 64-bit 
 bash tests/check_static.sh
 sudo bash tests/server_health.sh
 sudo cacti_account.sh audit-all
-sudo systemctl status apache2 mariadb cron
+sudo systemctl status nginx php8.4-fpm mariadb cron
 sudo tail -n 50 /var/log/cacti/cacti.log
 ~~~
 
@@ -151,12 +151,16 @@ Keep a single Cacti poller schedule; Debian's package manages polling and this i
 
 ~~~text
 cacti-mrtg-debian13/
-├── install_debian13.sh       # Fresh Debian 13 installer
+├── install_debian13.sh       # Fresh Debian 13 NGINX + PHP-FPM installer
 ├── bin/
 │   ├── cacti_account.sh     # Account management entry point
 │   ├── cacti_account.php    # Graph CLI, DB permissions and audit
 │   └── mrtg_private.sh      # Root-only MRTG target helper
-├── examples/private.cfg     # Optional private MRTG config
+├── examples/
+│   ├── private.cfg          # Optional private MRTG config
+│   ├── nginx-cacti-local.conf
+│   ├── nginx-cacti-locations.conf
+│   └── nginx-cacti-tls.example.conf
 ├── tests/
 │   ├── check_static.sh      # Shell/PHP and guard checks
 │   └── server_health.sh     # Post-install health checks

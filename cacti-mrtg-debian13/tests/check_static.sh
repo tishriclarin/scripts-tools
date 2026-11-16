@@ -22,7 +22,17 @@ for val in [
     assert val in s,val
 install=Path('install_debian13.sh').read_text()
 assert 'disable --now mrtg.service' in install
-assert 'LocationMatch "^/mrtg(?:/|$)"' in install
+assert 'nginx -t' in install
+assert 'cacti/webserver select none' in install
+assert 'php8.4-fpm' in install
+assert 'apache2ctl' not in install
+assert 'a2enconf' not in install
+nginx=Path('examples/nginx-cacti-locations.conf').read_text()
+assert 'location ^~ /mrtg' in nginx
+assert 'fastcgi_pass unix:/run/php/php8.4-fpm.sock;' in nginx
+assert 'Cache-Control "private, no-store"' in nginx
+local=Path('examples/nginx-cacti-local.conf').read_text()
+assert 'listen 127.0.0.1:8080;' in local
 assert '/var/lib/mrtg-private' in install
 print('PASS: static shell/PHP syntax and required security invariants present')
 PY

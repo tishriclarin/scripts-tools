@@ -4,6 +4,8 @@
 
 **Reusable scripts and tools for network operations, Linux systems, automation, and infrastructure.**
 
+**Web server standard: NGINX only** (PHP apps use PHP-FPM). See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 This repository is a collection of independent toolsets. It is **not** a Cacti-only repository: each tool lives in its own directory with its own installation guide, dependencies, tests, and versioning.
 
 ## Tool catalog
