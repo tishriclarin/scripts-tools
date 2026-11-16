@@ -143,7 +143,7 @@ def parse_types(text):
                         r'^\s*onu-type-if\s+(\S+)\s+\S+',
                         r'^\s*(?:\d+\s+)?([A-Za-z][\w.-]+)\s+GPON(?:\s|$)'):
             m = re.search(pattern, line, re.I)
-            if m and m.group(1).lower() not in ('name', 'type', 'interface'):
+            if m and m.group(1).lower() not in ('name', 'type', 'interface', 'onu-profile'):
                 found.append(m.group(1)); break
     return ordered_unique(found)
 
@@ -296,6 +296,19 @@ class Manager:
         if not self.running.strip():
             raise CliError('Empty running configuration; cache not loaded')
         self.types = parse_types(self.running)
+        # Prefer the first ONU type actually assigned on a GPON OLT interface.
+        registered_types = []
+        inside_pon = False
+        for config_line in self.running.splitlines():
+            if re.match(r'^interface\s+gpon-olt_', config_line, re.I):
+                inside_pon = True
+            elif re.match(r'^(?:!|interface\s+)', config_line, re.I):
+                inside_pon = False
+            if inside_pon:
+                match = re.match(r'^\s+onu\s+\d+\s+type\s+(\S+)\s+sn\s+', config_line, re.I)
+                if match:
+                    registered_types.append(match.group(1))
+        self.types = ordered_unique(registered_types + self.types)
         self.vlans = parse_vlans(self.running)
         self.traffic_profiles = parse_traffic_profiles(self.running)
         self.pon_descriptions = parse_pon_descriptions(self.running)
@@ -393,7 +406,7 @@ class Manager:
                     print(f'  WARNING: VLAN {values["service_vlan"]} has no cached DHCP snooping configuration')
                 tr69 = nids.get('TR69')
                 if tr69 is not None:
-                    if not re.fullmatch(r'\\d{1,4}', tr69) or not 1 <= int(tr69) <= 4094:
+                    if not re.fullmatch(r'\d{1,4}', tr69) or not 1 <= int(tr69) <= 4094:
                         raise CliError(f'Invalid NIDS TR69 VLAN: {tr69}')
                     values['tr069_user_vlan'] = int(tr69)
                 r.selected.update({'service_vlan':values['service_vlan'],
