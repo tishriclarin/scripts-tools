@@ -22,7 +22,8 @@
         "tr069_user_vlan": 4020,
         "tr069_svlan": 4000,
         "traffic_down": "DATA-1G-DOWN",
-        "traffic_up": "DATA-1G-UP"
+        "traffic_up": "DATA-1G-UP",
+        "remote_onu_profile": "REMOTE-HGU-HSI100-TR0694020"
       },
       "commands": [
         "configure terminal",
@@ -131,5 +132,17 @@
     "wan-ip 1 mode dhcp id Customer_{onu_id} vlan-profile {vlan_profile} host 1",
     "exit",
     "end"
-  ]
+  ],
+  "naming": {
+    "onu_type": "GENERIC-HGU",
+    "onu_type_label": "TYPE-GENERIC-HGU",
+    "tcont_profile": "DATA-1G",
+    "tcont_profile_label": "DBA-1G",
+    "traffic_ingress": "DATA-1G-DOWN",
+    "traffic_egress": "DATA-1G-UP",
+    "remote_onu_profile": "REMOTE-HGU-HSI100-TR0694020",
+    "remote_onu_profile_legacy": "GENERIC-HGU-REMOTE100",
+    "remote_onu_profile_binding_enabled": false,
+    "nids_description_template": "::VLAN:{service_vlan}_TR69:4020_ONU-TYPE:GENERIC-HGU_REMOTE:REMOTE-HGU-HSI100-TR0694020"
+  }
 }
