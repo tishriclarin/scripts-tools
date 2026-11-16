@@ -59,11 +59,6 @@
           "regex": "(?m)^\\s*name\\ Customer_{onu_id}\\s*$"
         },
         {
-          "name": "config_2",
-          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
-          "regex": "(?m)^\\s*sn\\-bind\\ enable\\ sn\\s*$"
-        },
-        {
           "name": "config_3",
           "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
           "regex": "(?m)^\\s*tcont\\ 1\\ name\\ DATA\\ profile\\ DATA\\-1G\\s*$"
