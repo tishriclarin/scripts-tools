@@ -144,5 +144,11 @@
     "remote_onu_profile_legacy": "GENERIC-HGU-REMOTE100",
     "remote_onu_profile_binding_enabled": false,
     "nids_description_template": "::VLAN:{service_vlan}_TR69:4020_ONU-TYPE:GENERIC-HGU_REMOTE:REMOTE-HGU-HSI100-TR0694020"
+  },
+  "remote_profile_binding": {
+    "enabled": false,
+    "commands": [],
+    "verify": [],
+    "note": "Fill only after confirming C300 firmware syntax for binding remote ONU profile; disabled means no binding occurs."
   }
 }
