@@ -1,0 +1,140 @@
+{
+  "timeout": 15,
+  "command_timeout": 20,
+  "max_onu_id": 128,
+  "allow_empty_pon": false,
+  "report_dir": "reports",
+  "discovery": {
+    "types": "show onu-type gpon",
+    "unregistered": "show gpon onu uncfg",
+    "registered": "show gpon onu state",
+    "pon_config": "show running-config interface gpon-olt_{pon}",
+    "onu_config": "show running-config interface gpon-onu_{pon}:1",
+    "types_config": "show running-config pon",
+    "types_full_config": "show running-config",
+    "running": "show running-config"
+  },
+  "model_aliases": {},
+  "profiles": {
+    "default": {
+      "variables": {
+        "service_vlan": 150,
+        "tr069_user_vlan": 4020,
+        "tr069_svlan": 4000,
+        "traffic_down": "DATA-1G-DOWN",
+        "traffic_up": "DATA-1G-UP"
+      },
+      "commands": [
+        "configure terminal",
+        "interface gpon-olt_{pon}",
+        "onu {onu_id} type {onu_type} sn {sn}",
+        "exit",
+        "interface gpon-onu_{pon}:{onu_id}",
+        "name Customer_{onu_id}",
+        "sn-bind enable sn",
+        "tcont 1 name DATA profile DATA-1G",
+        "gemport 1 name DATA tcont 1",
+        "gemport 2 name TR069 tcont 1",
+        "service-port 1 vport 1 user-vlan 100 vlan {service_vlan}",
+        "service-port 2 vport 2 user-vlan {tr069_user_vlan} vlan {service_vlan} svlan {tr069_svlan}",
+        "ip dhcp snooping enable vport 1",
+        "dhcpv4-l2-relay-agent enable vport 1",
+        "dhcpv4-l2-relay-agent trust true replace vport 1",
+        "dhcpv4-l2-relay-agent enable vport 2",
+        "dhcpv4-l2-relay-agent trust true replace vport 2",
+        "traffic-profile {traffic_down} vport 1 direction ingress",
+        "traffic-profile {traffic_up} vport 1 direction egress",
+        "exit",
+        "end"
+      ],
+      "verify": [
+        {
+          "name": "registration",
+          "command": "show running-config interface gpon-olt_{pon}",
+          "regex": "onu\\s+{onu_id}\\s+type\\s+{onu_type}\\s+sn\\s+{sn}"
+        },
+        {
+          "name": "config_1",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*name\\ Customer_{onu_id}\\s*$"
+        },
+        {
+          "name": "config_2",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*sn\\-bind\\ enable\\ sn\\s*$"
+        },
+        {
+          "name": "config_3",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*tcont\\ 1\\ name\\ DATA\\ profile\\ DATA\\-1G\\s*$"
+        },
+        {
+          "name": "config_4",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*gemport\\ 1\\ name\\ DATA\\ tcont\\ 1\\s*$"
+        },
+        {
+          "name": "config_5",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*gemport\\ 2\\ name\\ TR069\\ tcont\\ 1\\s*$"
+        },
+        {
+          "name": "config_6",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*service\\-port\\ 1\\ vport\\ 1\\ user\\-vlan\\ 100\\ vlan\\ {service_vlan}\\s*$"
+        },
+        {
+          "name": "config_7",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*service\\-port\\ 2\\ vport\\ 2\\ user\\-vlan\\ {tr069_user_vlan}\\ vlan\\ {service_vlan}\\ svlan\\ {tr069_svlan}\\s*$"
+        },
+        {
+          "name": "config_8",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*ip\\ dhcp\\ snooping\\ enable\\ vport\\ 1\\s*$"
+        },
+        {
+          "name": "config_9",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*dhcpv4\\-l2\\-relay\\-agent\\ enable\\ vport\\ 1\\s*$"
+        },
+        {
+          "name": "config_10",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*dhcpv4\\-l2\\-relay\\-agent\\ trust\\ true\\ replace\\ vport\\ 1\\s*$"
+        },
+        {
+          "name": "config_11",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*dhcpv4\\-l2\\-relay\\-agent\\ enable\\ vport\\ 2\\s*$"
+        },
+        {
+          "name": "config_12",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*dhcpv4\\-l2\\-relay\\-agent\\ trust\\ true\\ replace\\ vport\\ 2\\s*$"
+        },
+        {
+          "name": "config_13",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*traffic\\-profile\\ {traffic_down}\\ vport\\ 1\\ direction\\ ingress\\s*$"
+        },
+        {
+          "name": "config_14",
+          "command": "show running-config interface gpon-onu_{pon}:{onu_id}",
+          "regex": "(?m)^\\s*traffic\\-profile\\ {traffic_up}\\ vport\\ 1\\ direction\\ egress\\s*$"
+        }
+      ]
+    }
+  },
+  "fallback_onu_type": "GENERIC-HGU",
+  "pon_service_vlans": {},
+  "save_after_verify": true,
+  "save_command": "write",
+  "enable_wan_dhcp": false,
+  "wan_commands": [
+    "pon-onu-mng gpon-onu_{pon}:{onu_id}",
+    "wan-ip 1 mode dhcp id Customer_{onu_id} vlan-profile {vlan_profile} host 1",
+    "exit",
+    "end"
+  ]
+}
