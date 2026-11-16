@@ -149,11 +149,21 @@ def parse_types(text):
 
 
 def parse_vlans(text):
-    """Read configured VLAN IDs and per-VLAN DHCP snooping from running-config."""
+    """Discover configured VLAN IDs and DHCP snooping flags from running-config."""
     result = {}
     current = None
     for line in text.splitlines():
-        m = re.match(r'^vlan\\s+(\\d{1,4})\\s*
+        m = re.match(r'^vlan\s+(\d{1,4})\s*$', line, re.I)
+        if m:
+            current = int(m.group(1))
+            result[current] = {'dhcp_snooping': False}
+            continue
+        if current is not None:
+            if re.match(r'^\s+ip\s+dhcp\s+snooping\s*$', line, re.I):
+                result[current]['dhcp_snooping'] = True
+            elif re.match(r'^(?:!|\S)', line):
+                current = None
+    return result
 
 
 def parse_traffic_profiles(text):
