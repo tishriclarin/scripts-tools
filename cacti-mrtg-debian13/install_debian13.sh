@@ -17,13 +17,21 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 # Debian's cacti postinst provisions database, admin and import templates via dbconfig-common.
 printf '%s\n' \
-  'cacti cacti/webserver select apache2' \
+  'cacti cacti/webserver select none' \
   'cacti cacti/dbconfig-install boolean true' | debconf-set-selections
 apt-get update
-apt-get install -y --no-install-recommends \
-  apache2 mariadb-server dbconfig-common dbconfig-mysql \
-  libapache2-mod-php php-cli php-mysql php-gd php-snmp php-xml php-mbstring php-intl php-zip \
-  cacti mrtg snmp rrdtool iputils-ping cron
+# NGINX-only policy: preflight APT so no Apache dependency is installed.
+packagelist='nginx mariadb-server dbconfig-common dbconfig-mysql php php8.4-fpm php8.4-cli php8.4-mysql php8.4-gd php8.4-snmp php8.4-xml php8.4-mbstring php8.4-intl php8.4-zip php8.4-gmp php8.4-ldap cacti mrtg snmp rrdtool iputils-ping cron'
+apt-get -s install --no-install-recommends $packagelist > /tmp/scripts-tools-apt-plan
+if grep -Eq '^Inst (apache2|apache2-bin|libapache2-mod-php)' /tmp/scripts-tools-apt-plan; then
+    rm -f /tmp/scripts-tools-apt-plan
+    echo 'APT would install Apache: refusing. Review dependency alternatives.' >&2; exit 1
+fi
+rm -f /tmp/scripts-tools-apt-plan
+apt-get install -y --no-install-recommends $packagelist
+systemctl enable --now php8.4-fpm
+[[ -S /run/php/php8.4-fpm.sock ]] || { echo 'PHP 8.4-FPM socket missing' >&2; exit 1; }
+[[ -f /usr/share/cacti/site/index.php ]] || { echo 'Cacti site files missing' >&2; exit 1; }
 
 if [[ ! -f /etc/cacti/debian.php ]]; then
     echo 'ERROR: Cacti dbconfig-common was not configured; check dpkg-reconfigure cacti.' >&2
@@ -45,25 +53,18 @@ systemctl disable --now mrtg.service 2>/dev/null || true
 if [[ -f /etc/cron.d/mrtg ]]; then
     mv -n /etc/cron.d/mrtg /etc/cron.d/mrtg.disabled
 fi
-# These paths are not served, even if an administrator later enables MRTG Apache config.
-a2disconf mrtg 2>/dev/null || true
-cat >/etc/apache2/conf-available/scripts-tools-mrtg-deny.conf <<'EOF'
-<LocationMatch "^/mrtg(?:/|$)">
-    Require all denied
-</LocationMatch>
-EOF
-a2enconf scripts-tools-mrtg-deny >/dev/null
-# Cacti is only remotely reachable when Apache itself terminates HTTPS.
-# HTTP is local-only for initial setup (use an SSH local port forward).
-cat >/etc/apache2/conf-available/scripts-tools-cacti-tls.conf <<'EOF'
-<LocationMatch "^/cacti(?:/|$)">
-    <RequireAny>
-        Require local
-        Require expr "%{HTTPS} == 'on'"
-    </RequireAny>
-</LocationMatch>
-EOF
-a2enconf scripts-tools-cacti-tls >/dev/null
+# NGINX serves only the Cacti directory, never MRTG output.
+install -d -o root -g root -m 0755 /var/lib/scripts-tools/webroot /etc/nginx/snippets
+[[ ! -e /var/lib/scripts-tools/webroot/cacti && ! -L /var/lib/scripts-tools/webroot/cacti ]] ||
+  { echo 'Cacti webroot path already exists' >&2; exit 1; }
+ln -s /usr/share/cacti/site /var/lib/scripts-tools/webroot/cacti
+install -o root -g root -m 0644 "$here/examples/nginx-cacti-locations.conf" /etc/nginx/snippets/scripts-tools-cacti-locations.conf
+install -o root -g root -m 0644 "$here/examples/nginx-cacti-local.conf" /etc/nginx/sites-available/scripts-tools-cacti-local.conf
+# On a fresh NGINX install remove the default HTTP site symlink.
+if [[ -L /etc/nginx/sites-enabled/default ]] && [[ "$(readlink -f /etc/nginx/sites-enabled/default)" == /etc/nginx/sites-available/default ]]; then
+  rm /etc/nginx/sites-enabled/default
+fi
+ln -s /etc/nginx/sites-available/scripts-tools-cacti-local.conf /etc/nginx/sites-enabled/scripts-tools-cacti-local.conf
 # Use a cron job only when targets have been configured.
 cat >/etc/cron.d/scripts-tools-mrtg <<'EOF'
 */5 * * * * root test -s /etc/mrtg/scripts-tools/targets.cfg && /usr/bin/mrtg /etc/mrtg/scripts-tools/private.cfg --logging /var/log/scripts-tools-mrtg.log
@@ -82,14 +83,15 @@ EOF
 
 # Disable Cacti guest/anonymous use, but leave all other stock Cacti defaults alone.
 php /usr/local/lib/scripts-tools/cacti_account.php lockdown
-apache2ctl configtest
-systemctl enable --now mariadb apache2 cron
-systemctl reload apache2
+nginx -t
+systemctl enable --now mariadb nginx cron
+systemctl reload nginx
+systemctl restart php8.4-fpm
 
 echo
 echo 'Debian 13 Cacti + MRTG base installation completed.'
-echo 'Initial setup: SSH tunnel to server: sudo ssh -L 8080:127.0.0.1:80 USER@SERVER; open http://localhost:8080/cacti/'
-echo 'Remote customer access is blocked until Apache HTTPS is configured with a valid certificate.'
+echo 'Initial setup: ssh -L 8080:127.0.0.1:8080 USER@SERVER; open http://localhost:8080/cacti/'
+echo 'NGINX initially listens only on 127.0.0.1:8080. Configure the example HTTPS virtual host and certificate before customer access.'
 echo 'Set a new administrator password before customer onboarding:'
 echo '  sudo cacti_account.sh reset-admin'
 echo 'Use HTTPS with a trusted certificate before exposing Cacti to customers.'
