@@ -419,110 +419,7 @@ class Manager:
                     values['remote_onu_profile'] = remote_name
                     r.selected['remote_onu_profile'] = remote_name
                     remote_block = re.search(
-                        r'(?im)^onu-profile\\s+gpon\\s+remote\\s+' + re.escape(remote_name) + r'\\s*
-                if self.cfg.get('enable_wan_dhcp', False):
-                    # Firmware-specific command is opt-in and requires explicit validation.
-                    wan = self.cfg.get('wan_commands', [])
-                    if any('{vlan_profile}' in c for c in wan):
-                        raise CliError('WAN DHCP template still requires vlan-profile; configure WAN mapping separately')
-                    if not wan: raise CliError('WAN DHCP enabled but wan_commands is empty')
-                    commands += [render(c, values) for c in wan]
-                if not commands or any(not c.strip() for c in commands):
-                    raise CliError('Empty provisioning command')
-                r.commands = commands
-                if self.preview:
-                    print('\n'.join('  ' + c for c in commands))
-                    r.state = 'PREVIEW'; continue
-                for command in commands:
-                    self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
-                    r.executed += 1
-                # Read back and require explicit verification evidence.
-                checks = list(profile.get('verify', []))
-                if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
-                    checks += self.cfg['remote_profile_binding']['verify']
-                if not checks:
-                    raise CliError('No verification checks defined for profile')
-                all_ok = True
-                for check in checks:
-                    output = self.s.command(render(check['command'], values))
-                    pattern = render(check['regex'], values)
-                    ok = bool(re.search(pattern, output, re.I | re.M))
-                    r.verification[check['name']] = {'ok':ok, 'command':check['command']}
-                    if not ok: all_ok = False
-                r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
-                if not all_ok:
-                    r.error = 'One or more running-config checks did not match'
-                else:
-                    if self.cfg.get('save_after_verify', True):
-                        self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
-            except (CliError, KeyError, ValueError, socket.error) as exc:
-                r.state = 'PARTIAL' if r.executed else ('FAILED' if r.commands else 'SKIPPED')
-                r.error = str(exc)
-            print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
-        counts = {state:sum(r.state == state for r in results) for state in ('SUCCESS','PARTIAL','FAILED','VERIFY_FAILED','SKIPPED','PREVIEW')}
-        print('\nSUMMARY: ' + '  '.join(f'{k}={v}' for k,v in counts.items()))
-        for r in results:
-            if r.state in ('PARTIAL','FAILED','VERIFY_FAILED','SKIPPED'):
-                print(f'  {r.sn}: {r.state} - {r.error}')
-        report_dir = Path(self.cfg.get('report_dir', 'reports'))
-        report_dir.mkdir(parents=True, exist_ok=True)
-        name = report_dir / ('zte-cli-' + dt.datetime.now().strftime('%Y%m%d-%H%M%S') + '.json')
-        from dataclasses import asdict
-        name.write_text(json.dumps({'preview':self.preview, 'timestamp':dt.datetime.now(dt.timezone.utc).isoformat(), 'results':[asdict(r) for r in results], 'counts':counts}, indent=2))
-        print(f'Report: {name}')
-        if not self.preview:
-            self.refresh()
-
-def main():
-    parser = argparse.ArgumentParser(description='ZTE C300 ONU management CLI')
-    parser.add_argument('mode', nargs='?', choices=['preview'], help='preview: print planned registration commands; default applies them')
-    parser.add_argument('--host', required=True, help='OLT management IP/hostname')
-    parser.add_argument('--port', type=int, default=23)
-    parser.add_argument('--user', required=True)
-    parser.add_argument('--config', default='zte-cli.json')
-    args = parser.parse_args()
-    cfg = load_settings(args.config)
-    print('*' * 49)
-    print(f'  ZTE-CLI version {VERSION}')
-    print('  Date: ' + dt.date.today().isoformat())
-    print('  By Tishri Clarin')
-    print('  ZTE GPON ONU discovery, registration,')
-    print('  provisioning and configuration verification')
-    print('*' * 49)
-    print('MODE: ' + ('PREVIEW (read-only)' if args.mode == 'preview' else 'APPLY (changes OLT)'))
-    password = getpass.getpass('OLT password: ')
-    s = TelnetSession(args.host, args.port, cfg.get('timeout',15))
-    try:
-        s.connect(args.user, password)
-        mgr = Manager(s, cfg, args.mode == 'preview')
-        mgr.refresh()
-        print('Commands: show cache|types|all|unreg|<sn>, reg <sn>|all, refresh, help, exit')
-        while True:
-            try:
-                line = input('zte-cli> ').strip()
-                if not line: continue
-                cmd, _, arg = line.partition(' ')
-                cmd, arg = cmd.lower(), arg.strip()
-                if cmd in ('exit','quit'): break
-                elif cmd == 'help': print('show cache | show types | show all | show unreg | show <onu-sn>\nreg <onu-sn> | reg all | refresh | exit')
-                elif cmd == 'refresh': mgr.refresh()
-                elif cmd == 'show': mgr.show(arg)
-                elif cmd == 'reg' and (arg == 'all' or SN_RE.fullmatch(arg)):
-                    mgr.reg(arg)
-                else: print('Unknown command. Type help.')
-            except (CliError, KeyError, ValueError) as exc:
-                print('ERROR:', exc)
-            except (EOFError, KeyboardInterrupt):
-                print(); break
-    finally:
-        s.close()
-
-if __name__ == '__main__':
-    try: main()
-    except (CliError, OSError, ValueError, json.JSONDecodeError) as exc:
-        print('FATAL:', exc, file=sys.stderr)
-        sys.exit(1)
-,
+                        r'(?im)^onu-profile\s+gpon\s+remote\s+' + re.escape(remote_name) + r'\s*$',
                         self.running)
                     if not remote_block:
                         raise CliError(f'Remote ONU profile {remote_name} not found in captured running-config; refresh/inspect OLT')
@@ -554,7 +451,9 @@ if __name__ == '__main__':
                     self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
                     r.executed += 1
                 # Read back and require explicit verification evidence.
-                checks = profile.get('verify', [])
+                checks = list(profile.get('verify', []))
+                if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
+                    checks += self.cfg['remote_profile_binding']['verify']
                 if not checks:
                     raise CliError('No verification checks defined for profile')
                 all_ok = True
