@@ -70,7 +70,7 @@ while :; do
     log "ERROR: TCP bridge exited"
     exit 1
   fi
-  NEW_PATH="$(termux-usb -l 2>/dev/null | grep -oE '/dev/bus/usb/[0-9]+/[0-9]+' | head -n1 || true)"
+  NEW_PATH="$(timeout 6 termux-usb -l 2>/dev/null | grep -oE '/dev/bus/usb/[0-9]+/[0-9]+' | head -n1 || true)"
   if [ -z "$NEW_PATH" ]; then
     if [ -n "$USB_PATH" ]; then
       log "USB device disconnected: $USB_PATH"
@@ -107,7 +107,7 @@ while :; do
       log "USB interface-claim failure. Android permission alone does not guarantee that stock usbmuxd can claim the interface."
       PROBLEM_REPORTED=yes
     fi
-    UDID="$(idevice_id -l 2>/dev/null | head -n1 || true)"
+    UDID="$(timeout 5 idevice_id -l 2>/dev/null | head -n1 || true)"
     if [ -n "$UDID" ] && [ "$LINK_UP" != yes ]; then
       LINK_UP=yes
       log "iPhone available to Termux (UDID present). Debian endpoint: 10.0.2.2:27015"
@@ -156,7 +156,13 @@ RUN
     fi
     service-daemon start >/dev/null 2>&1 || true
     sleep 2
-    sv restart "$NAME"; sv status "$NAME"
+    # If Android's USB API blocks the monitor, SIGTERM may not complete.
+    # Only force-restart this named service; never stop the whole runsvdir.
+    if ! sv -w 4 force-restart "$NAME"; then
+      echo "Force-restart timed out; requesting the named service back up." >&2
+      sv up "$NAME" || true
+    fi
+    sv status "$NAME"
     ;;
   status)
     sv status "$NAME" || true
