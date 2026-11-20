@@ -43,11 +43,15 @@ mkdir -p "$STATE" "$PREFIX/var/run"
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$STATE/service.log"; }
 USB_PATH=""
 MUX_PID=""
+REQUEST_PID=""
 BRIDGE_PID=""
 LINK_UP=no
+PROBLEM_REPORTED=no
 cleanup() {
   log "Service stopped; cleaning up child processes"
+  MUX_PID="$(cat "$STATE/mux.pid" 2>/dev/null || echo "$MUX_PID")"
   if [ -n "$MUX_PID" ]; then kill "$MUX_PID" 2>/dev/null || true; fi
+  if [ -n "$REQUEST_PID" ]; then kill "$REQUEST_PID" 2>/dev/null || true; fi
   if [ -n "$BRIDGE_PID" ]; then kill "$BRIDGE_PID" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
@@ -70,32 +74,39 @@ while :; do
   if [ -z "$NEW_PATH" ]; then
     if [ -n "$USB_PATH" ]; then
       log "USB device disconnected: $USB_PATH"
+      MUX_PID="$(cat "$STATE/mux.pid" 2>/dev/null || echo "$MUX_PID")"
       if [ -n "$MUX_PID" ]; then kill "$MUX_PID" 2>/dev/null || true; fi
+      if [ -n "$REQUEST_PID" ]; then kill "$REQUEST_PID" 2>/dev/null || true; fi
       USB_PATH=""
       MUX_PID=""
+      REQUEST_PID=""
       LINK_UP=no
+      PROBLEM_REPORTED=no
     fi
   elif [ "$NEW_PATH" != "$USB_PATH" ]; then
+    MUX_PID="$(cat "$STATE/mux.pid" 2>/dev/null || echo "$MUX_PID")"
     if [ -n "$MUX_PID" ]; then kill "$MUX_PID" 2>/dev/null || true; fi
+    if [ -n "$REQUEST_PID" ]; then kill "$REQUEST_PID" 2>/dev/null || true; fi
     USB_PATH="$NEW_PATH"
     MUX_PID=""
+    REQUEST_PID=""
     LINK_UP=no
+    PROBLEM_REPORTED=no
     : > "$STATE/mux.log"
     rm -f "$STATE/mux.pid"
     log "OTG device attached: $USB_PATH; requesting Android USB permission"
-    if termux-usb -r -E -e "$WORKER" "$USB_PATH" >> "$STATE/service.log" 2>&1; then
-      sleep 2
-      MUX_PID="$(cat "$STATE/mux.pid" 2>/dev/null || true)"
-      if [ -z "$MUX_PID" ] || ! kill -0 "$MUX_PID" 2>/dev/null; then
-        log "usbmuxd did not stay running. Check $STATE/mux.log"
-      else
-        log "usbmuxd launched, checking iPhone connectivity..."
-      fi
-    else
-      log "USB permission denied, timed out, or device disconnected."
-    fi
+    # termux-usb -e may remain active as long as its callback daemon runs.
+    # Never block the monitor on it: the callback retains the authorized FD.
+    termux-usb -r -E -e "$WORKER" "$USB_PATH" >> "$STATE/service.log" 2>&1 &
+    REQUEST_PID=$!
+    log "USB permission request launched; monitoring continues during callback."
   fi
   if [ -n "$USB_PATH" ]; then
+    MUX_PID="$(cat "$STATE/mux.pid" 2>/dev/null || echo "$MUX_PID")"
+    if [ "$PROBLEM_REPORTED" = no ] && grep -Eq 'LIBUSB_ERROR_BUSY|Could not claim interface|LIBUSB_ERROR_NOT_FOUND' "$STATE/mux.log" 2>/dev/null; then
+      log "USB interface-claim failure. Android permission alone does not guarantee that stock usbmuxd can claim the interface."
+      PROBLEM_REPORTED=yes
+    fi
     UDID="$(idevice_id -l 2>/dev/null | head -n1 || true)"
     if [ -n "$UDID" ] && [ "$LINK_UP" != yes ]; then
       LINK_UP=yes
