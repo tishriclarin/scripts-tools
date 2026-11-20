@@ -8,6 +8,11 @@ NAME=iphone-otg
 BASE="$HOME/.local/share/iphone-otg"
 STATE="$HOME/.local/state/iphone-otg"
 SERVICE="$PREFIX/var/service/$NAME"
+# termux-services normally sets these in a login shell. Scripts launched
+# without that shell must provide them explicitly for sv and service-daemon.
+export SVDIR="$PREFIX/var/service"
+export LOGDIR="$PREFIX/var/log"
+mkdir -p "$SVDIR" "$LOGDIR"
 MODE=install
 if [ "$#" -gt 0 ]; then MODE="$1"; fi
 
@@ -112,7 +117,7 @@ RUN
     ln -sfn "$PREFIX/share/termux-services/svlogger" "$SERVICE/log/run"
     echo "[2/3] Starting runit service manager..."
     service-daemon start >/dev/null 2>&1 || true
-    sleep 1
+    sleep 2
     echo "[3/3] Enabling USB hotplug monitor..."
     sv-enable "$NAME"
     sv up "$NAME"
@@ -122,14 +127,24 @@ RUN
     echo "Check: bash $HOME/termux-iphone-otg-service.sh status"
     ;;
   start)
+    if [ ! -f "$SERVICE/run" ]; then
+      echo "Service directory not installed; running setup first."
+      exec bash "$0" install
+    fi
     service-daemon start >/dev/null 2>&1 || true
+    sleep 2
     sv-enable "$NAME"; sv up "$NAME"; sv status "$NAME"
     ;;
   stop)
     sv-disable "$NAME"; sv down "$NAME"; sv status "$NAME" || true
     ;;
   restart)
+    if [ ! -f "$SERVICE/run" ]; then
+      echo "Service directory not installed; running setup first."
+      exec bash "$0" install
+    fi
     service-daemon start >/dev/null 2>&1 || true
+    sleep 2
     sv restart "$NAME"; sv status "$NAME"
     ;;
   status)
