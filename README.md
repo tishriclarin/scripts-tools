@@ -13,6 +13,7 @@ This repository is a collection of independent toolsets. It is **not** a Cacti-o
 | Toolset | Platform | Purpose | Status |
 | --- | --- | --- | --- |
 | [Cacti + MRTG monitoring](cacti-mrtg-debian13/) | Debian 13 | Install Cacti/MRTG, graph SNMP interfaces or VLAN interfaces, and provision customer graph-only accounts | v0.1.0 — **test before production** |
+| [MikroTik DDNS remote management](tools/mikrotik/) | RouterOS 7 | Manage WinBox/SSH firewall allow rule from DDNS hostname; set service access to all IPv4 (requires firewall deny rules) | **Review firewall before production** |
 
 Other network, server, scripting, and administrative utilities will be added as separate directories.
 
