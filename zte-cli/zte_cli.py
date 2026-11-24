@@ -431,7 +431,17 @@ class Manager:
                         verification = remote_cfg.get('verify', [])
                         if not binding_commands or not verification:
                             raise CliError('Remote profile binding requires verified commands and verification checks')
-                        commands += [render(c, values) for c in binding_commands]
+                        # Bind within the existing gpon-olt interface, immediately after ONU registration.
+                        # Never open a second configure session or append commands after 'end'.
+                        binding = [render(c, values) for c in binding_commands]
+                        if any(c.strip().lower() in ('configure terminal', 'end') for c in binding):
+                            raise CliError('remote_profile_binding.commands must contain only interface-local commands')
+                        registration = render('onu {onu_id} type {onu_type} sn {sn}', values)
+                        try:
+                            insert_at = commands.index(registration) + 1
+                        except ValueError:
+                            raise CliError('Cannot locate ONU registration command for remote profile binding')
+                        commands[insert_at:insert_at] = binding
                     else:
                         print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
                 if self.cfg.get('enable_wan_dhcp', False):
