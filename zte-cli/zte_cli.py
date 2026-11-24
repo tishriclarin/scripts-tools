@@ -601,7 +601,7 @@ class Manager:
                 try:
                     registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
                     registration_verified = False
-                    for command in commands:
+                    for command in r.commands:
                         self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
                         r.executed += 1
                         if command == registration_command:
