@@ -8,6 +8,7 @@ import argparse
 import datetime as dt
 import getpass
 import json
+import os
 import re
 import socket
 import sys
@@ -679,7 +680,9 @@ def main():
     print('  provisioning and configuration verification')
     print('*' * 49)
     print('MODE: ' + ('PREVIEW (read-only)' if args.mode == 'preview' else 'APPLY (changes OLT)'))
-    password = getpass.getpass('OLT password: ')
+    password = os.environ.pop('ZTE_CLI_PASSWORD', None)
+    if password is None:
+        password = getpass.getpass('OLT password: ')
     s = TelnetSession(args.host, args.port, cfg.get('timeout',15))
     try:
         s.connect(args.user, password)
