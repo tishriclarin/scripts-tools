@@ -499,7 +499,10 @@ class Manager:
                         if vlan_name not in self.vlan_onu_profiles:
                             raise CliError(f'ONU VLAN profile {vlan_name!r} is not defined in OLT running-config; available: {self.vlan_onu_profiles}')
                         values['vlan_onu_profile'] = vlan_name
-                        commands[insert_at:insert_at] = [render('onu {onu_id} profile vlan {vlan_onu_profile}', values)] + binding
+                        # The ZTE C300 rejected "onu <id> profile vlan <name>" in
+                        # gpon-olt context. Cache/validate the profile name, but
+                        # do not issue an unverified VLAN profile binding command.
+                        commands[insert_at:insert_at] = binding
                     else:
                         print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
                 if self.cfg.get('enable_wan_dhcp', False):
