@@ -493,20 +493,17 @@ class Manager:
                             insert_at = commands.index(registration) + 1
                         except ValueError:
                             raise CliError('Cannot locate ONU registration command for remote profile binding')
-                        vlan_name = nids.get('VLAN-PROFILE') or self.cfg.get('naming', {}).get('vlan_onu_profile', 'DHCP-CVLAN100')
-                        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', vlan_name):
-                            raise CliError(f'Invalid ONU VLAN profile: {vlan_name}')
-                        if vlan_name not in self.vlan_onu_profiles:
-                            raise CliError(f'ONU VLAN profile {vlan_name!r} is not defined in OLT running-config; available: {self.vlan_onu_profiles}')
-                        values['vlan_onu_profile'] = vlan_name
-                        # The ZTE C300 rejected "onu <id> profile vlan <name>" in
-                        # gpon-olt context. Cache/validate the profile name, but
-                        # do not issue an unverified VLAN profile binding command.
+                        # VLAN is configured through pon-onu-mng, not a gpon-olt VLAN profile binding.
                         commands[insert_at:insert_at] = binding
                     else:
                         print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
                 pon_mng = self.cfg.get('pon_onu_mng', {})
                 if pon_mng.get('enabled', False):
+                    veip_raw = nids.get('VEIP-VLAN')
+                    if veip_raw is None or not re.fullmatch(r'\\d{1,4}', veip_raw) or not 1 <= int(veip_raw) <= 4094:
+                        raise CliError(f'Invalid or missing NIDS VEIP-VLAN for {onu.pon}: {veip_raw!r}')
+                    values['veip_vlan'] = int(veip_raw)
+                    r.selected['veip_vlan'] = values['veip_vlan']
                     pon_commands = pon_mng.get('commands', [])
                     if not pon_commands:
                         raise CliError('pon_onu_mng enabled without commands')
