@@ -372,6 +372,22 @@ class Manager:
                 if not self.types:
                     raise CliError('Cannot read configured ONU types from OLT (discovery failure)')
                 nids = parse_nids(self.pon_descriptions.get(onu.pon, ''))
+                # Card-to-service-VLAN mapping is authoritative for this deployment.
+                # Reject conflicting descriptions before sending any OLT commands.
+                card = '/'.join(onu.pon.split('/')[:2])
+                card_vlan = self.cfg.get('gpon_card_service_vlans', {}).get(card)
+                if card_vlan is not None:
+                    card_vlan = int(card_vlan)
+                    expected_id = str(card_vlan)
+                    if 'NIDS' in nids and nids['NIDS'] != expected_id:
+                        raise CliError(
+                            f'PON {onu.pon} NIDS {nids["NIDS"]!r} conflicts with '
+                            f'card {card} VLAN {card_vlan}; refusing provisioning')
+                    if 'VLAN' in nids and nids['VLAN'] != expected_id:
+                        raise CliError(
+                            f'PON {onu.pon} VLAN {nids["VLAN"]!r} conflicts with '
+                            f'card {card} VLAN {card_vlan}; refusing provisioning')
+                    nids.setdefault('NIDS', expected_id)
                 if 'NIDS' in nids:
                     profile_id = nids['NIDS']
                     if not re.fullmatch(r'[A-Za-z0-9-]{1,32}', profile_id):
