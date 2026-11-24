@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = '2.1.6'
+VERSION = '2.1.7'
 PROMPT = re.compile(rb'(?m)(?:^|\r?\n)[^\r\n]{0,100}(?:\(config[^)]*\))?[#>]\s*$')
 LOGIN = re.compile(rb'(?i)(?:username|login)\s*:\s*$')
 PASSWORD = re.compile(rb'(?i)password\s*:\s*$')
@@ -459,6 +459,20 @@ class Manager:
         self.reserved_ids = {}
         results = []
         plans = []
+        def snapshot_blocks(raw):
+            blocks = {}
+            current = None
+            for line in raw.splitlines():
+                match = re.match(r'^\s*(interface\s+gpon-(?:olt|onu)_\d+/\d+/\d+(?::\d+)?|pon-onu-mng\s+gpon-onu_\d+/\d+/\d+:\d+)\s*$', line, re.I)
+                if match:
+                    current = match.group(1).lower()
+                    blocks[current] = [line]
+                elif re.match(r'^\s*(?:!|interface\s+|pon-onu-mng\s+|end\s*$)', line, re.I):
+                    current = None
+                elif current:
+                    blocks[current].append(line)
+            return {key: '\n'.join(lines) for key, lines in blocks.items()}
+        initial_blocks = snapshot_blocks(self.running)
         # Phase 1: build and reserve the entire batch before any changes.
         for i, onu in enumerate(targets, 1):
             r = Result(onu.sn, onu.pon, onu.model)
@@ -522,7 +536,7 @@ class Manager:
                 if not profile:
                     raise CliError(f'No provisioning profile for {r.onu_type} (or default)')
                 # PON config must be scoped to the requested interface only.
-                pon_config = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':onu.pon}))
+                pon_config = initial_blocks.get(f'interface gpon-olt_{onu.pon}', '')
                 if not re.search(r'(?im)^\s*interface\s+gpon-olt_' + re.escape(onu.pon) + r'\b', pon_config):
                     raise CliError('PON configuration response does not identify requested interface')
                 occupied = extract_occupied_ids(pon_config, onu.pon)
@@ -643,56 +657,51 @@ class Manager:
             if input('Apply entire batch? [yes/no]: ').strip().lower() != 'yes':
                 print('Cancelled; no ONU configuration applied')
                 return
-            # Phase 2: execute each fully prepared ONU plan, never reallocating IDs.
-            for onu, r, values, profile, remote_name in plans:
-                print(f'[APPLY] {onu.sn} {onu.pon}:{r.onu_id}')
+            # Apply preplanned commands once per ONU, then verify from one snapshot.
+            applied = []
+            for index, (onu, r, values, profile, remote_name) in enumerate(plans, 1):
+                print(f'[APPLY {index}/{len(plans)}] {onu.sn} {onu.pon}:{r.onu_id}')
                 try:
                     registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
-                    registration_verified = False
+                    if registration_command not in r.commands:
+                        raise CliError('Provisioning template omitted ONU registration')
                     for command in r.commands:
                         self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
                         r.executed += 1
-                        if command == registration_command:
-                            # Fail closed before touching gpon-onu or pon-onu-mng.
-                            actual = self.s.command(render(self.cfg['discovery']['pon_config'], values))
-                            expected = re.compile(r'(?im)^\s*onu\s+' + str(r.onu_id) +
-                                r'\s+type\s+' + re.escape(r.onu_type) +
-                                r'\s+sn\s+' + re.escape(onu.sn) + r'(?:\s|$)')
-                            registration_verified = bool(expected.search(actual))
-                            r.verification['registration'] = {
-                                'ok': registration_verified,
-                                'command': render(self.cfg['discovery']['pon_config'], values)
-                            }
-                            if not registration_verified:
-                                raise CliError(f'ONU registration not confirmed for {onu.sn} at {onu.pon}:{r.onu_id}; aborting batch')
-                    if not registration_verified:
-                        raise CliError('Provisioning template omitted ONU registration; aborting batch')
-                    # Read back and require explicit verification evidence.
-                    checks = list(profile.get('verify', []))
-                    if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
-                        checks += self.cfg['remote_profile_binding']['verify']
-                    if not checks:
-                        raise CliError('No verification checks defined for profile')
-                    all_ok = True
-                    for check in checks:
-                        output = self.s.command(render(check['command'], values))
-                        pattern = render(check['regex'], values)
-                        ok = bool(re.search(pattern, output, re.I | re.M))
-                        r.verification[check['name']] = {'ok':ok, 'command':render(check['command'], values)}
-                        if not ok: all_ok = False
-                    r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
-                    if not all_ok:
-                        r.error = 'One or more running-config checks did not match'
+                    applied.append((onu, r, values, profile, remote_name))
+                    r.state = 'PARTIAL'
+                    r.error = 'Awaiting batch verification'
                 except (CliError, KeyError, ValueError, OSError) as exc:
-                    if r.executed:
-                        try: self.s.command('end')
-                        except (CliError, OSError): pass
                     r.state = 'PARTIAL' if r.executed else 'FAILED'
                     r.error = str(exc)
-                print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
-                if r.state != 'SUCCESS':
-                    print('ABORT: remaining preplanned ONUs not attempted')
+                    print(f'ABORT: {r.error}; remaining ONUs not attempted')
                     break
+            if applied:
+                print('[VERIFY] Reading final running configuration once')
+                try:
+                    final_blocks = snapshot_blocks(self.s.command(self.cfg['discovery'].get('running', 'show running-config'), timeout=120))
+                    for onu, r, values, profile, remote_name in applied:
+                        checks = list(profile.get('verify', []))
+                        if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
+                            checks += self.cfg['remote_profile_binding']['verify']
+                        all_ok = bool(checks)
+                        cache = {}
+                        for check in checks:
+                            command = render(check['command'], values)
+                            if command not in cache:
+                                prefix = 'show running-config '
+                                if command.lower().startswith(prefix):
+                                    cache[command] = final_blocks.get(command[len(prefix):].lower(), '')
+                                else:
+                                    cache[command] = self.s.command(command)
+                            ok = bool(re.search(render(check['regex'], values), cache[command], re.I | re.M))
+                            r.verification[check['name']] = {'ok':ok, 'command':command}
+                            all_ok = all_ok and ok
+                        r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
+                        r.error = '' if all_ok else 'One or more running-config checks did not match'
+                        print(f'[VERIFY] {onu.sn} {onu.pon}:{r.onu_id} {r.state}')
+                except (CliError, KeyError, ValueError, OSError) as exc:
+                    print(f'[VERIFY] Failed: {exc}')
         if not (preview or self.preview) and all(r.state == 'SUCCESS' for r in results) and self.cfg.get('save_after_verify', True):
             print('[SAVE] Saving completed batch once')
             self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
@@ -708,7 +717,7 @@ class Manager:
         name.write_text(json.dumps({'preview':self.preview, 'timestamp':dt.datetime.now(dt.timezone.utc).isoformat(), 'results':[asdict(r) for r in results], 'counts':counts}, indent=2))
         print(f'Report: {name}')
         if not (preview or self.preview):
-            self.refresh()
+            print('Run refresh to update discovery counts')
 
 def main():
     parser = argparse.ArgumentParser(description='ZTE C300 ONU management CLI')
