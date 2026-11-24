@@ -9,6 +9,7 @@ import datetime as dt
 import getpass
 import json
 import os
+import secrets
 import re
 import socket
 import sys
@@ -362,8 +363,8 @@ class Manager:
 
     def unregister(self, scope, preview=False):
         """Remove registered ONUs on a selected PON or GPON module only."""
-        if not re.fullmatch(r'\d+/\d+(?:/\d+)?', scope):
-            raise CliError('Usage: unreg <1/3/1|1/3> [preview]')
+        if scope != 'all' and not re.fullmatch(r'\d+/\d+(?:/\d+)?', scope):
+            raise CliError('Usage: unreg <all|1/3/1|1/3> [preview]')
         self.refresh()
         blocks = {}
         current = None
@@ -376,7 +377,7 @@ class Manager:
                 current = None
             elif current:
                 blocks[current].append(line)
-        ports = [p for p in blocks if p == scope] if scope.count('/') == 2 else [p for p in blocks if p.startswith(scope + '/')]
+        ports = list(blocks) if scope == 'all' else ([p for p in blocks if p == scope] if scope.count('/') == 2 else [p for p in blocks if p.startswith(scope + '/')])
         if not ports:
             raise CliError('No matching PON configuration found; refusing deletion')
         targets = []
@@ -391,7 +392,8 @@ class Manager:
             print(f'{pon}:{onu_id} SN={sn}')
         if preview or self.preview:
             print('PREVIEW ONLY: no OLT changes'); return
-        if input(f'Remove {len(targets)} registered ONUs from {scope}? Type yes to confirm: ').strip().lower() != 'yes':
+        key = str(100000 + secrets.randbelow(900000))
+        if input(f'Remove {len(targets)} registered ONUs from {scope}? Type {key} to confirm: ').strip() != key:
             print('Cancelled'); return
         for pon, onu_id, sn in targets:
             actual = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':pon}))
@@ -688,7 +690,7 @@ def main():
         s.connect(args.user, password)
         mgr = Manager(s, cfg, args.mode == 'preview')
         mgr.refresh()
-        print('Commands: show cache|types|all|unreg|<sn>, reg <sn>|all [preview], unreg <rack/slot[/port]> [preview], refresh, help, exit')
+        print('Commands: show cache|types|all|unreg|<sn>, reg <sn>|all [preview], unreg <all|rack/slot[/port]> [preview], refresh, help, exit')
         while True:
             try:
                 line = input('zte-cli> ').strip()
@@ -696,8 +698,13 @@ def main():
                 cmd, _, arg = line.partition(' ')
                 cmd, arg = cmd.lower(), arg.strip()
                 if cmd in ('exit','quit'): break
-                elif cmd == 'help': print('show cache | show types | show all | show unreg | show <onu-sn>\nreg <onu-sn> | reg all | refresh | exit')
+                elif cmd == 'help' or (cmd == 'show' and arg == 'help'): print('show cache | show types | show all | show unreg | show <onu-sn>\nreg <onu-sn|all> [preview]\nunreg <all|rack/slot|rack/slot/port> [preview]\nrefresh | help | exit')
                 elif cmd == 'refresh': mgr.refresh()
+                elif cmd == 'unreg':
+                    tokens = arg.lower().split()
+                    if len(tokens) not in (1, 2) or (len(tokens) == 2 and tokens[1] != 'preview'):
+                        raise CliError('Usage: unreg <all|rack/slot|rack/slot/port> [preview]')
+                    mgr.unregister(tokens[0], preview=len(tokens) == 2)
                 elif cmd == 'show': mgr.show(arg)
                 elif cmd == 'reg' and arg and (arg.split()[0] == 'all' or SN_RE.fullmatch(arg.split()[0])):
                     tokens = arg.split()
