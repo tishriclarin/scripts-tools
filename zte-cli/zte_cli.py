@@ -423,38 +423,30 @@ class Manager:
                         self.running)
                     if not remote_block:
                         raise CliError(f'Remote ONU profile {remote_name} not found in captured running-config; refresh/inspect OLT')
-                # Bind VLAN and remote profiles under the gpon-olt interface.
-                vlan_name = nids.get('VLAN-PROFILE') or nids.get('ONU-VLAN-PROFILE') or self.cfg.get('naming', {}).get('vlan_onu_profile')
-                vlan_cfg = self.cfg.get('vlan_profile_binding', {})
-                remote_cfg = self.cfg.get('remote_profile_binding', {})
-                if vlan_cfg.get('enabled', False):
-                    if not vlan_name or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', vlan_name):
-                        raise CliError('Missing or invalid ONU VLAN profile name')
-                    profile_pattern = r'(?im)^\\s*onu\\s+profile\\s+vlan\\s+' + re.escape(vlan_name) + r'\\s*$'
-                    if not re.search(profile_pattern, self.running):
-                        raise CliError(f'ONU VLAN profile {vlan_name} not found in running-config')
-                    values['vlan_onu_profile'] = vlan_name
-                    r.selected['vlan_onu_profile'] = vlan_name
-                commands = [render(c, values) for c in profile['commands']]
-                registration = render('onu {onu_id} type {onu_type} sn {sn}', values)
-                try:
-                    insert_at = commands.index(registration) + 1
-                except ValueError:
-                    raise CliError('Cannot locate ONU registration command for profile binding')
-                binding = []
-                if vlan_cfg.get('enabled', False):
-                    if not vlan_cfg.get('commands') or not vlan_cfg.get('verify'):
-                        raise CliError('VLAN profile binding requires commands and verification')
-                    binding.extend(render(c, values) for c in vlan_cfg['commands'])
-                if remote_name and remote_cfg.get('enabled', False):
-                    if not remote_cfg.get('commands') or not remote_cfg.get('verify'):
-                        raise CliError('Remote profile binding requires commands and verification')
-                    binding.extend(render(c, values) for c in remote_cfg['commands'])
-                elif remote_name:
-                    print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
-                if any(c.strip().lower() in ('configure terminal', 'end', 'exit') for c in binding):
-                    raise CliError('Profile binding commands must be interface-local')
-                commands[insert_at:insert_at] = binding
+                vlan_profile = nids.get('VLAN-PROFILE') or self.cfg.get('naming', {}).get('vlan_onu_profile', 'DHCP-CVLAN100')
+                if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', vlan_profile):
+                    raise CliError(f'Invalid ONU VLAN profile name: {vlan_profile}')
+                if not re.search(r'(?im)^\\s*onu\\s+profile\\s+vlan\\s+' + re.escape(vlan_profile) + r'\\s*
+                if remote_name:
+                    remote_cfg = self.cfg.get('remote_profile_binding', {})
+                    if remote_cfg.get('enabled', False):
+                        binding_commands = remote_cfg.get('commands', [])
+                        verification = remote_cfg.get('verify', [])
+                        if not binding_commands or not verification:
+                            raise CliError('Remote profile binding requires verified commands and verification checks')
+                        # Bind within the existing gpon-olt interface, immediately after ONU registration.
+                        # Never open a second configure session or append commands after 'end'.
+                        binding = [render(c, values) for c in binding_commands]
+                        if any(c.strip().lower() in ('configure terminal', 'end') for c in binding):
+                            raise CliError('remote_profile_binding.commands must contain only interface-local commands')
+                        registration = render('onu {onu_id} type {onu_type} sn {sn}', values)
+                        try:
+                            insert_at = commands.index(registration) + 1
+                        except ValueError:
+                            raise CliError('Cannot locate ONU registration command for remote profile binding')
+                        commands[insert_at:insert_at] = binding
+                    else:
+                        print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
                 if self.cfg.get('enable_wan_dhcp', False):
                     # Firmware-specific command is opt-in and requires explicit validation.
                     wan = self.cfg.get('wan_commands', [])
@@ -473,11 +465,10 @@ class Manager:
                     r.executed += 1
                 # Read back and require explicit verification evidence.
                 checks = list(profile.get('verify', []))
-                if vlan_cfg.get('enabled', False):
-                    vlan_checks = vlan_cfg.get('verify', [])
-                    if not vlan_checks:
-                        raise CliError('VLAN profile binding requires verification checks')
-                    checks += vlan_checks
+                checks.append({
+                    'name': 'vlan_profile_binding',
+                    'command': 'show running-config interface gpon-olt_{pon}',
+                    'regex': r'^\\s*onu\\s+{onu_id}\\s+profile\\s+vlan\\s+{vlan_onu_profile}\\s*
                 if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
                     checks += self.cfg['remote_profile_binding']['verify']
                 if not checks:
