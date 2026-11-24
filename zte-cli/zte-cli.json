@@ -165,36 +165,36 @@
       "VLAN": 150,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
-      "VLAN-PROFILE": "DHCP-CVLAN100",
-      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
+      "VEIP-VLAN": 100
     },
     "151": {
       "VLAN": 151,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
-      "VLAN-PROFILE": "DHCP-CVLAN100",
-      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
+      "VEIP-VLAN": 100
     },
     "152": {
       "VLAN": 152,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
-      "VLAN-PROFILE": "DHCP-CVLAN100",
-      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
+      "VEIP-VLAN": 100
     },
     "153": {
       "VLAN": 153,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
-      "VLAN-PROFILE": "DHCP-CVLAN100",
-      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
+      "VEIP-VLAN": 100
     },
     "154": {
       "VLAN": 154,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
-      "VLAN-PROFILE": "DHCP-CVLAN100",
-      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
+      "VEIP-VLAN": 100
     }
   },
   "gpon_card_service_vlans": {
@@ -209,10 +209,10 @@
     "commands": [
       "configure terminal",
       "pon-onu-mng gpon-onu_{pon}:{onu_id}",
-      "vlan port veip_1 mode tag vlan 100",
+      "vlan port veip_1 mode tag vlan {veip_vlan}",
       "exit",
       "end"
     ],
-    "note": "DHCP-CVLAN100 remains configured/cached; no unverified vlan-profile binding is sent. VEIP tag VLAN 100 is the known command."
+    "note": "VEIP VLAN is read from NIDS VEIP-VLAN (100). DHCP-CVLAN100 remains defined on the OLT but is not bound by an unverified command."
   }
 }
