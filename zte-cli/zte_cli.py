@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = '2.1.2'
+VERSION = '2.1.3'
 PROMPT = re.compile(rb'(?m)(?:^|\r?\n)[^\r\n]{0,100}(?:\(config[^)]*\))?[#>]\s*$')
 LOGIN = re.compile(rb'(?i)(?:username|login)\s*:\s*$')
 PASSWORD = re.compile(rb'(?i)password\s*:\s*$')
@@ -620,6 +620,10 @@ class Manager:
                 print('\n'.join('  ' + command for command in r.commands))
                 r.state = 'PREVIEW'
         else:
+            print(f'Batch ready: {len(plans)} ONUs; all ONU IDs reserved')
+            if input('Apply entire batch? [yes/no]: ').strip().lower() != 'yes':
+                print('Cancelled; no ONU configuration applied')
+                return
             # Phase 2: execute each fully prepared ONU plan, never reallocating IDs.
             for onu, r, values, profile, remote_name in plans:
                 print(f'[APPLY] {onu.sn} {onu.pon}:{r.onu_id}')
@@ -660,9 +664,6 @@ class Manager:
                     r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
                     if not all_ok:
                         r.error = 'One or more running-config checks did not match'
-                    else:
-                        if self.cfg.get('save_after_verify', True):
-                            self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
                 except (CliError, KeyError, ValueError, OSError) as exc:
                     if r.executed:
                         try: self.s.command('end')
@@ -673,6 +674,9 @@ class Manager:
                 if r.state != 'SUCCESS':
                     print('ABORT: remaining preplanned ONUs not attempted')
                     break
+        if not (preview or self.preview) and all(r.state == 'SUCCESS' for r in results) and self.cfg.get('save_after_verify', True):
+            print('[SAVE] Saving completed batch once')
+            self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
         counts = {state:sum(r.state == state for r in results) for state in ('SUCCESS','PARTIAL','FAILED','VERIFY_FAILED','SKIPPED','PREVIEW')}
         print('\nSUMMARY: ' + '  '.join(f'{k}={v}' for k,v in counts.items()))
         for r in results:
