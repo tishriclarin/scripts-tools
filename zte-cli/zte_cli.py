@@ -505,6 +505,14 @@ class Manager:
                         commands[insert_at:insert_at] = binding
                     else:
                         print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
+                pon_mng = self.cfg.get('pon_onu_mng', {})
+                if pon_mng.get('enabled', False):
+                    pon_commands = pon_mng.get('commands', [])
+                    if not pon_commands:
+                        raise CliError('pon_onu_mng enabled without commands')
+                    if not commands or commands[-1].strip().lower() != 'end':
+                        raise CliError('Expected provisioning commands to end before pon-onu-mng')
+                    commands.extend(render(c, values) for c in pon_commands)
                 if self.cfg.get('enable_wan_dhcp', False):
                     # Firmware-specific command is opt-in and requires explicit validation.
                     wan = self.cfg.get('wan_commands', [])
