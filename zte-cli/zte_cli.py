@@ -366,8 +366,25 @@ class Manager:
                 r.onu_type, type_source = resolve_cached(nids.get('ONU-TYPE') or nids.get('TYPE'), self.types, 'ONU-TYPE')
                 if onu.model and onu.model in self.types and not (nids.get('ONU-TYPE') or nids.get('TYPE')):
                     r.onu_type, type_source = onu.model, 'MODEL-EXACT'
-                ingress, in_source = resolve_cached(nids.get('TRAFFIC-INGRESS'), self.traffic_profiles['ingress'], 'TRAFFIC-INGRESS')
-                egress, out_source = resolve_cached(nids.get('TRAFFIC-EGRESS'), self.traffic_profiles['egress'], 'TRAFFIC-EGRESS')
+                # Explicitly configured names are valid when no assignment can be discovered.
+                defaults = self.cfg['profiles'].get(r.onu_type) or self.cfg['profiles'].get('default', {})
+                variables = defaults.get('variables', {})
+                ingress_options = self.traffic_profiles['ingress']
+                egress_options = self.traffic_profiles['egress']
+                ingress_name = nids.get('TRAFFIC-INGRESS') or variables.get('traffic_down')
+                egress_name = nids.get('TRAFFIC-EGRESS') or variables.get('traffic_up')
+                if not ingress_options and ingress_name:
+                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', ingress_name):
+                        raise CliError('Invalid configured TRAFFIC-INGRESS name')
+                    ingress, in_source = ingress_name, 'CONFIG'
+                else:
+                    ingress, in_source = resolve_cached(nids.get('TRAFFIC-INGRESS'), ingress_options, 'TRAFFIC-INGRESS')
+                if not egress_options and egress_name:
+                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', egress_name):
+                        raise CliError('Invalid configured TRAFFIC-EGRESS name')
+                    egress, out_source = egress_name, 'CONFIG'
+                else:
+                    egress, out_source = resolve_cached(nids.get('TRAFFIC-EGRESS'), egress_options, 'TRAFFIC-EGRESS')
                 r.selected = {'onu_type':r.onu_type, 'type_source':type_source, 'traffic_ingress':ingress, 'traffic_egress':egress}
                 print('  Resolved:', r.selected)
                 profile = self.cfg['profiles'].get(r.onu_type) or self.cfg['profiles'].get('default')
