@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = '2.1.5'
+VERSION = '2.1.6'
 PROMPT = re.compile(rb'(?m)(?:^|\r?\n)[^\r\n]{0,100}(?:\(config[^)]*\))?[#>]\s*$')
 LOGIN = re.compile(rb'(?i)(?:username|login)\s*:\s*$')
 PASSWORD = re.compile(rb'(?i)password\s*:\s*$')
@@ -92,6 +92,9 @@ class TelnetSession:
                         raise CliError('Pagination limit exceeded')
                     deadline = time.monotonic() + timeout
                     continue
+                # ZTE erases pager markers with backspaces and spaces.
+                # Strip that terminal noise without deleting configuration text.
+                data = bytearray(re.sub(rb'[ \t]*\x08[ \t\x08]*', b'', data))
                 if any(p.search(data) for p in patterns):
                     return bytes(data)
             except socket.timeout:
