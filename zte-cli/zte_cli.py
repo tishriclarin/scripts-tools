@@ -295,6 +295,7 @@ class Manager:
         self.types = []
         self.unreg = []
         self.registered = []
+        self.reserved_ids = {}
 
     def refresh(self):
         discovery = self.cfg['discovery']
@@ -364,6 +365,7 @@ class Manager:
         if not targets:
             print('No matching unregistered ONU found'); return
         results = []
+        self.reserved_ids = {}
         for i, onu in enumerate(targets, 1):
             r = Result(onu.sn, onu.pon, onu.model)
             results.append(r)
@@ -430,6 +432,7 @@ class Manager:
                 if not re.search(r'(?im)^\s*interface\s+gpon-olt_' + re.escape(onu.pon) + r'\b', pon_config):
                     raise CliError('PON configuration response does not identify requested interface')
                 occupied = extract_occupied_ids(pon_config, onu.pon)
+                occupied.update(self.reserved_ids.get(onu.pon, set()))
                 if not occupied and not self.cfg.get('allow_empty_pon', False):
                     if not pon_config.strip() or re.search(r'(?i)(invalid|error|not found|unsupported)', pon_config):
                         raise CliError('Cannot validate occupied ONU IDs; empty/invalid PON config')
@@ -437,6 +440,8 @@ class Manager:
                 max_id = int(self.cfg.get('max_onu_id', 128))
                 r.onu_id = next((n for n in range(1,max_id+1) if n not in occupied), None)
                 if r.onu_id is None: raise CliError('No free ONU ID')
+                # Reserve IDs even when a later command fails; never reuse within a batch.
+                self.reserved_ids.setdefault(onu.pon, set()).add(r.onu_id)
                 values = {**profile.get('variables', {}), 'sn':onu.sn, 'pon':onu.pon,
                           'onu_id':r.onu_id, 'onu_type':r.onu_type,
                           'traffic_down':ingress, 'traffic_up':egress}
@@ -528,9 +533,26 @@ class Manager:
                 if self.preview:
                     print('\n'.join('  ' + c for c in commands))
                     r.state = 'PREVIEW'; continue
+                registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
+                registration_verified = False
                 for command in commands:
                     self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
                     r.executed += 1
+                    if command == registration_command:
+                        # Fail closed before touching gpon-onu or pon-onu-mng.
+                        actual = self.s.command(render(self.cfg['discovery']['pon_config'], values))
+                        expected = re.compile(r'(?im)^\\s*onu\\s+' + str(r.onu_id) +
+                            r'\\s+type\\s+' + re.escape(r.onu_type) +
+                            r'\\s+sn\\s+' + re.escape(onu.sn) + r'(?:\\s|$)')
+                        registration_verified = bool(expected.search(actual))
+                        r.verification['registration'] = {
+                            'ok': registration_verified,
+                            'command': render(self.cfg['discovery']['pon_config'], values)
+                        }
+                        if not registration_verified:
+                            raise CliError(f'ONU registration not confirmed for {onu.sn} at {onu.pon}:{r.onu_id}; aborting batch')
+                if not registration_verified:
+                    raise CliError('Provisioning template omitted ONU registration; aborting batch')
                 # Read back and require explicit verification evidence.
                 checks = list(profile.get('verify', []))
                 if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
@@ -542,7 +564,7 @@ class Manager:
                     output = self.s.command(render(check['command'], values))
                     pattern = render(check['regex'], values)
                     ok = bool(re.search(pattern, output, re.I | re.M))
-                    r.verification[check['name']] = {'ok':ok, 'command':check['command']}
+                    r.verification[check['name']] = {'ok':ok, 'command':render(check['command'], values)}
                     if not ok: all_ok = False
                 r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
                 if not all_ok:
@@ -562,7 +584,7 @@ class Manager:
                 r.state = 'PARTIAL' if r.executed else ('FAILED' if r.commands else 'SKIPPED')
                 r.error = str(exc)
             print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
-            if 'abort_batch' in locals() and abort_batch:
+            if r.state == 'VERIFY_FAILED' or ('abort_batch' in locals() and abort_batch):
                 print('  ABORT: partial provisioning; remaining ONUs not attempted')
                 break
         counts = {state:sum(r.state == state for r in results) for state in ('SUCCESS','PARTIAL','FAILED','VERIFY_FAILED','SKIPPED','PREVIEW')}
