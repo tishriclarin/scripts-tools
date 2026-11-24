@@ -426,7 +426,7 @@ class Manager:
                 vlan_profile = nids.get('VLAN-PROFILE') or self.cfg.get('naming', {}).get('vlan_onu_profile', 'DHCP-CVLAN100')
                 if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', vlan_profile):
                     raise CliError(f'Invalid ONU VLAN profile name: {vlan_profile}')
-                if not re.search(r'(?im)^\\s*onu\\s+profile\\s+vlan\\s+' + re.escape(vlan_profile) + r'\\s*
+                if not re.search(r'(?im)^\s*onu\s+profile\s+vlan\s+' + re.escape(vlan_profile) + r'\s*$', self.running):
                 if remote_name:
                     remote_cfg = self.cfg.get('remote_profile_binding', {})
                     if remote_cfg.get('enabled', False):
@@ -468,7 +468,7 @@ class Manager:
                 checks.append({
                     'name': 'vlan_profile_binding',
                     'command': 'show running-config interface gpon-olt_{pon}',
-                    'regex': r'^\\s*onu\\s+{onu_id}\\s+profile\\s+vlan\\s+{vlan_onu_profile}\\s*
+                    'regex': r'^\s*onu\s+{onu_id}\s+profile\s+vlan\s+{vlan_onu_profile}\s*$'
                 if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
                     checks += self.cfg['remote_profile_binding']['verify']
                 if not checks:
