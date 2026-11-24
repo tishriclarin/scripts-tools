@@ -551,45 +551,45 @@ class Manager:
             for onu, r, values, profile, remote_name in plans:
                 print(f'[APPLY] {onu.sn} {onu.pon}:{r.onu_id}')
                 try:
-                registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
-                registration_verified = False
-                for command in commands:
-                    self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
-                    r.executed += 1
-                    if command == registration_command:
-                        # Fail closed before touching gpon-onu or pon-onu-mng.
-                        actual = self.s.command(render(self.cfg['discovery']['pon_config'], values))
-                        expected = re.compile(r'(?im)^\s*onu\s+' + str(r.onu_id) +
-                            r'\s+type\s+' + re.escape(r.onu_type) +
-                            r'\s+sn\s+' + re.escape(onu.sn) + r'(?:\s|$)')
-                        registration_verified = bool(expected.search(actual))
-                        r.verification['registration'] = {
-                            'ok': registration_verified,
-                            'command': render(self.cfg['discovery']['pon_config'], values)
-                        }
-                        if not registration_verified:
-                            raise CliError(f'ONU registration not confirmed for {onu.sn} at {onu.pon}:{r.onu_id}; aborting batch')
-                if not registration_verified:
-                    raise CliError('Provisioning template omitted ONU registration; aborting batch')
-                # Read back and require explicit verification evidence.
-                checks = list(profile.get('verify', []))
-                if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
-                    checks += self.cfg['remote_profile_binding']['verify']
-                if not checks:
-                    raise CliError('No verification checks defined for profile')
-                all_ok = True
-                for check in checks:
-                    output = self.s.command(render(check['command'], values))
-                    pattern = render(check['regex'], values)
-                    ok = bool(re.search(pattern, output, re.I | re.M))
-                    r.verification[check['name']] = {'ok':ok, 'command':render(check['command'], values)}
-                    if not ok: all_ok = False
-                r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
-                if not all_ok:
-                    r.error = 'One or more running-config checks did not match'
-                else:
-                    if self.cfg.get('save_after_verify', True):
-                        self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
+                    registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
+                    registration_verified = False
+                    for command in commands:
+                        self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
+                        r.executed += 1
+                        if command == registration_command:
+                            # Fail closed before touching gpon-onu or pon-onu-mng.
+                            actual = self.s.command(render(self.cfg['discovery']['pon_config'], values))
+                            expected = re.compile(r'(?im)^\s*onu\s+' + str(r.onu_id) +
+                                r'\s+type\s+' + re.escape(r.onu_type) +
+                                r'\s+sn\s+' + re.escape(onu.sn) + r'(?:\s|$)')
+                            registration_verified = bool(expected.search(actual))
+                            r.verification['registration'] = {
+                                'ok': registration_verified,
+                                'command': render(self.cfg['discovery']['pon_config'], values)
+                            }
+                            if not registration_verified:
+                                raise CliError(f'ONU registration not confirmed for {onu.sn} at {onu.pon}:{r.onu_id}; aborting batch')
+                    if not registration_verified:
+                        raise CliError('Provisioning template omitted ONU registration; aborting batch')
+                    # Read back and require explicit verification evidence.
+                    checks = list(profile.get('verify', []))
+                    if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
+                        checks += self.cfg['remote_profile_binding']['verify']
+                    if not checks:
+                        raise CliError('No verification checks defined for profile')
+                    all_ok = True
+                    for check in checks:
+                        output = self.s.command(render(check['command'], values))
+                        pattern = render(check['regex'], values)
+                        ok = bool(re.search(pattern, output, re.I | re.M))
+                        r.verification[check['name']] = {'ok':ok, 'command':render(check['command'], values)}
+                        if not ok: all_ok = False
+                    r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
+                    if not all_ok:
+                        r.error = 'One or more running-config checks did not match'
+                    else:
+                        if self.cfg.get('save_after_verify', True):
+                            self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
                 except (CliError, KeyError, ValueError, OSError) as exc:
                     if r.executed:
                         try: self.s.command('end')
@@ -611,7 +611,7 @@ class Manager:
         from dataclasses import asdict
         name.write_text(json.dumps({'preview':self.preview, 'timestamp':dt.datetime.now(dt.timezone.utc).isoformat(), 'results':[asdict(r) for r in results], 'counts':counts}, indent=2))
         print(f'Report: {name}')
-        if not self.preview:
+        if not (preview or self.preview):
             self.refresh()
 
 def main():
@@ -648,7 +648,7 @@ def main():
                 elif cmd == 'help': print('show cache | show types | show all | show unreg | show <onu-sn>\nreg <onu-sn> | reg all | refresh | exit')
                 elif cmd == 'refresh': mgr.refresh()
                 elif cmd == 'show': mgr.show(arg)
-                elif cmd == 'reg' and (arg.split()[0:1] == ['all'] or SN_RE.fullmatch(arg.split()[0]) if arg else False):
+                elif cmd == 'reg' and arg and (arg.split()[0] == 'all' or SN_RE.fullmatch(arg.split()[0])):
                     tokens = arg.split()
                     if len(tokens) > 2 or (len(tokens) == 2 and tokens[1].lower() != 'preview'):
                         raise CliError('Usage: reg all [preview] | reg <serial> [preview]')
