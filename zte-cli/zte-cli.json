@@ -143,7 +143,7 @@
     "remote_onu_profile": "REMOTE-HGU-HSI100-TR0694020",
     "remote_onu_profile_legacy": "GENERIC-HGU-REMOTE100",
     "remote_onu_profile_binding_enabled": true,
-    "nids_description_template": "::VLAN:{service_vlan}_TR69:4020_ONU-TYPE:GENERIC-HGU_VLAN-PROFILE:DHCP-CVLAN100_REMOTE:REMOTE-HGU-HSI100-TR0694020",
+    "nids_description_template": "::NIDS:{service_vlan}",
     "vlan_onu_profile": "DHCP-CVLAN100"
   },
   "remote_profile_binding": {
@@ -159,5 +159,21 @@
       }
     ],
     "note": "Mandatory binding directly after ONU registration in gpon-olt context; verified with show pon onu onu-profile. Existing registered ONUs require a separate reconciliation workflow."
+  },
+  "nids_profiles": {
+    "150": {
+      "VLAN": 150,
+      "TR69": 4020,
+      "ONU-TYPE": "GENERIC-HGU",
+      "VLAN-PROFILE": "DHCP-CVLAN100",
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+    },
+    "151": {
+      "VLAN": 151,
+      "TR69": 4020,
+      "ONU-TYPE": "GENERIC-HGU",
+      "VLAN-PROFILE": "DHCP-CVLAN100",
+      "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
+    }
   }
 }
