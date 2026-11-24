@@ -143,7 +143,7 @@
     "remote_onu_profile": "REMOTE-HGU-HSI100-TR0694020",
     "remote_onu_profile_legacy": "GENERIC-HGU-REMOTE100",
     "remote_onu_profile_binding_enabled": true,
-    "nids_description_template": "::VLAN:{service_vlan}_TR69:4020_ONU-TYPE:GENERIC-HGU_REMOTE:REMOTE-HGU-HSI100-TR0694020",
+    "nids_description_template": "::VLAN:{service_vlan}_TR69:4020_ONU-TYPE:GENERIC-HGU_VLAN-PROFILE:DHCP-CVLAN100_REMOTE:REMOTE-HGU-HSI100-TR0694020",
     "vlan_onu_profile": "DHCP-CVLAN100"
   },
   "remote_profile_binding": {
