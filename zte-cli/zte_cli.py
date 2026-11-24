@@ -500,7 +500,7 @@ class Manager:
                 pon_mng = self.cfg.get('pon_onu_mng', {})
                 if pon_mng.get('enabled', False):
                     veip_raw = nids.get('VEIP-VLAN')
-                    if veip_raw is None or not re.fullmatch(r'\\d{1,4}', veip_raw) or not 1 <= int(veip_raw) <= 4094:
+                    if veip_raw is None or not re.fullmatch(r'\d{1,4}', veip_raw) or not 1 <= int(veip_raw) <= 4094:
                         raise CliError(f'Invalid or missing NIDS VEIP-VLAN for {onu.pon}: {veip_raw!r}')
                     service_name = nids.get('SERVICE-NAME', 'HSI')
                     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,31}', service_name):
