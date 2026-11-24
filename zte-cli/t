@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+# t: fresh install + immediate CLI launch for fast ZTE C300 testing.
+# Password is never stored in the repository, command line, or local config.
+REPO_URL="https://raw.githubusercontent.com/tishriclarin/scripts-tools/main/zte-cli/reinstall.sh"
+HOST="${ZTE_CLI_HOST:-192.168.10.60}"
+USER="${ZTE_CLI_USER:-zte}"
+MODE="${1:-}"
+if [[ $# -gt 1 || ( -n "$MODE" && "$MODE" != preview && "$MODE" != --no-install ) ]]; then
+  echo "Usage: t [preview|--no-install]" >&2
+  exit 2
+fi
+if [[ "$MODE" != --no-install ]]; then
+  command -v curl >/dev/null || { echo "curl required" >&2; exit 1; }
+  TEMP="$(mktemp)"
+  trap 'rm -f -- "$TEMP"' EXIT
+  curl --fail --location --silent --show-error --retry 2 "$REPO_URL" -o "$TEMP"
+  bash "$TEMP"
+fi
+INSTALL_DIR="${ZTE_CLI_HOME:-$HOME/.local/share/zte-cli}"
+[[ -f "$INSTALL_DIR/zte_cli.py" ]] || { echo "Missing ZTE-CLI installation" >&2; exit 1; }
+echo "[t] ZTE-CLI -> $HOST (user: $USER)"
+echo "[t] Telnet is unencrypted; use only on a trusted management network."
+cd "$INSTALL_DIR"
+export PYTHONDONTWRITEBYTECODE=1
+if [[ "$MODE" == preview ]]; then
+  exec python3 zte_cli.py preview --host "$HOST" --user "$USER" --config zte-cli.json
+fi
+exec python3 zte_cli.py --host "$HOST" --user "$USER" --config zte-cli.json
