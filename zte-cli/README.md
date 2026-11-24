@@ -59,3 +59,22 @@ Registration plans are fully constructed and ONU IDs reserved before any provisi
 `unreg` only targets registered ONU entries from matching `gpon-olt` interface blocks. It displays the targets and requires typing `DELETE <scope>` before changes. It rechecks each serial/ONU-ID mapping immediately before issuing `no onu <id>`. This is a destructive OLT operation: use preview first, and validate the deletion syntax on your C300 firmware before production use.
 
 **Validation status:** The new planning, scoped deletion and reinstall changes require a local Python test run and a firmware-specific lab test. Do not use module-wide deletion on a production OLT before validation.
+
+## Fast testing wrapper: `t`
+
+Download the wrapper once, then use it for rapid reinstall/debug cycles:
+
+```bash
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/tishriclarin/scripts-tools/main/zte-cli/t -o ~/.local/bin/t
+chmod 700 ~/.local/bin/t
+~/.local/bin/t
+```
+
+`t` downloads and executes the latest reinstall script, removes the old local installation and cache files, backs up configuration/reports, and launches the CLI on `192.168.10.60` with username `zte`. It prompts for the password without echoing it. Review the downloaded script before executing it on a production machine.
+
+For an interactive read-only session: `~/.local/bin/t preview`. To skip reinstall for quick retesting: `~/.local/bin/t --no-install`.
+
+For noninteractive test environments, `ZTE_CLI_PASSWORD` can be provided as a transient environment variable; avoid saving it in shell history or a file. The password is not stored in GitHub.
+
+**Note:** A fresh reinstall replaces the local configuration with the repository default; backups are saved under `~/.local/share/zte-cli-backups`. The wrapper does not clear OLT configuration.
