@@ -541,9 +541,9 @@ class Manager:
                     if command == registration_command:
                         # Fail closed before touching gpon-onu or pon-onu-mng.
                         actual = self.s.command(render(self.cfg['discovery']['pon_config'], values))
-                        expected = re.compile(r'(?im)^\\s*onu\\s+' + str(r.onu_id) +
-                            r'\\s+type\\s+' + re.escape(r.onu_type) +
-                            r'\\s+sn\\s+' + re.escape(onu.sn) + r'(?:\\s|$)')
+                        expected = re.compile(r'(?im)^\s*onu\s+' + str(r.onu_id) +
+                            r'\s+type\s+' + re.escape(r.onu_type) +
+                            r'\s+sn\s+' + re.escape(onu.sn) + r'(?:\s|$)')
                         registration_verified = bool(expected.search(actual))
                         r.verification['registration'] = {
                             'ok': registration_verified,
