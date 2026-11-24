@@ -166,6 +166,13 @@ def parse_vlans(text):
     return result
 
 
+def parse_vlan_onu_profiles(text):
+    """Cache defined GPON ONU VLAN profile names, not per-ONU bindings."""
+    return ordered_unique(m.group(1) for m in re.finditer(
+        r'(?im)^\\s*onu\\s+profile\\s+vlan\\s+([A-Za-z][A-Za-z0-9_-]{0,63})\\b',
+        text))
+
+
 def parse_traffic_profiles(text):
     """Cache actual ingress/egress assignments from existing ONU configurations."""
     out = {'ingress': [], 'egress': []}
@@ -311,6 +318,7 @@ class Manager:
         self.types = ordered_unique(registered_types + self.types)
         self.vlans = parse_vlans(self.running)
         self.traffic_profiles = parse_traffic_profiles(self.running)
+        self.vlan_onu_profiles = parse_vlan_onu_profiles(self.running)
         self.pon_descriptions = parse_pon_descriptions(self.running)
         self.registered = parse_registered(self.running)
         # Optional extra type definitions; never replace configured type order.
@@ -321,11 +329,12 @@ class Manager:
         self.unreg = parse_unregistered(self.s.command(discovery['unregistered']))
         print(f'[CACHE] types={self.types} VLANs={self.vlans}')
         print(f'[CACHE] traffic ingress={self.traffic_profiles["ingress"]} egress={self.traffic_profiles["egress"]}')
+        print(f'[CACHE] ONU VLAN profiles={self.vlan_onu_profiles}')
         print(f'[DISCOVERY] {len(self.unreg)} unregistered ONUs')
 
     def show(self, arg):
         if arg == 'cache':
-            print(json.dumps({'onu_types':self.types,'vlans':self.vlans,'traffic_profiles':self.traffic_profiles,'pon_descriptions':self.pon_descriptions}, indent=2))
+            print(json.dumps({'onu_types':self.types,'vlans':self.vlans,'traffic_profiles':self.traffic_profiles,'vlan_onu_profiles':self.vlan_onu_profiles,'pon_descriptions':self.pon_descriptions}, indent=2))
         elif arg == 'types':
             print('\n'.join(sorted(self.types)) or '(none parsed)')
             if not self.types:
@@ -461,6 +470,8 @@ class Manager:
                         vlan_name = nids.get('VLAN-PROFILE') or self.cfg.get('naming', {}).get('vlan_onu_profile', 'DHCP-CVLAN100')
                         if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', vlan_name):
                             raise CliError(f'Invalid ONU VLAN profile: {vlan_name}')
+                        if vlan_name not in self.vlan_onu_profiles:
+                            raise CliError(f'ONU VLAN profile {vlan_name!r} is not defined in OLT running-config; available: {self.vlan_onu_profiles}')
                         values['vlan_onu_profile'] = vlan_name
                         commands[insert_at:insert_at] = [render('onu {onu_id} profile vlan {vlan_onu_profile}', values)] + binding
                     else:
@@ -501,9 +512,20 @@ class Manager:
                     if self.cfg.get('save_after_verify', True):
                         self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
             except (CliError, KeyError, ValueError, socket.error) as exc:
+                # A failed command may leave the OLT inside a configuration interface.
+                # Stop the batch; never issue another configure terminal blindly.
+                if r.executed:
+                    try:
+                        self.s.command('end')
+                    except (CliError, OSError):
+                        pass
+                abort_batch = r.executed > 0
                 r.state = 'PARTIAL' if r.executed else ('FAILED' if r.commands else 'SKIPPED')
                 r.error = str(exc)
             print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
+            if 'abort_batch' in locals() and abort_batch:
+                print('  ABORT: partial provisioning; remaining ONUs not attempted')
+                break
         counts = {state:sum(r.state == state for r in results) for state in ('SUCCESS','PARTIAL','FAILED','VERIFY_FAILED','SKIPPED','PREVIEW')}
         print('\nSUMMARY: ' + '  '.join(f'{k}={v}' for k,v in counts.items()))
         for r in results:
