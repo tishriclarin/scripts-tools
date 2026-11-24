@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = '2.1.4'
+VERSION = '2.1.5'
 PROMPT = re.compile(rb'(?m)(?:^|\r?\n)[^\r\n]{0,100}(?:\(config[^)]*\))?[#>]\s*$')
 LOGIN = re.compile(rb'(?i)(?:username|login)\s*:\s*$')
 PASSWORD = re.compile(rb'(?i)password\s*:\s*$')
@@ -96,14 +96,23 @@ class TelnetSession:
                     return bytes(data)
             except socket.timeout:
                 continue
-        raise CliError('Timed out waiting for OLT prompt/response')
+        raise CliError('Timed out waiting for OLT prompt/response; last output: ' + repr(bytes(data[-500:]).decode('utf-8', errors='replace'))) 
 
     def command(self, command, timeout=None):
         self.send(command)
         prompt = PROMPT
         if self.prompt_name:
             prompt = re.compile(rb'(?m)(?:^|\r?\n)' + re.escape(self.prompt_name) + rb'(?:\([^)\r\n]*\))?[#>][ \t\r\n]*$')
-        raw = self.read_until((prompt,), timeout or self.timeout)
+        confirm = re.compile(rb'(?im)(?:\[\s*y\s*/\s*n\s*\]|\(\s*y\s*/\s*n\s*\)|\[\s*yes\s*/\s*no\s*\]|\(\s*yes\s*/\s*no\s*\))\s*[:?]?\s*$')
+        allow_confirm = bool(re.fullmatch(r'no onu \d+', command.strip(), re.I))
+        try:
+            raw = self.read_until((prompt, confirm) if allow_confirm else (prompt,), timeout or self.timeout)
+            if allow_confirm and confirm.search(raw):
+                print(f'[TELNET] {command}: answering OLT confirmation')
+                self.send('yes' if b'yes' in confirm.search(raw).group().lower() else 'y')
+                raw += b'\n' + self.read_until((prompt,), timeout or self.timeout)
+        except CliError as exc:
+            raise CliError(f'{command!r}: {exc}') from exc
         if self.last_pages:
             print(f'[TELNET] {command}: continued {self.last_pages} page(s)')
         text = raw.decode('utf-8', errors='replace').replace('\r', '')
@@ -418,7 +427,8 @@ class Manager:
         key = str(100000 + secrets.randbelow(900000))
         if input(f'Remove {len(targets)} registered ONUs from {scope}? Type {key} to confirm: ').strip() != key:
             print('Cancelled'); return
-        for pon, onu_id, sn in targets:
+        for index, (pon, onu_id, sn) in enumerate(targets, 1):
+            print(f'[DELETE {index}/{len(targets)}] {pon}:{onu_id} SN={sn}')
             actual = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':pon}))
             expected = re.compile(r'(?im)^\s*onu\s+' + str(onu_id) +
                 r'\s+type\s+\S+\s+sn\s+' + re.escape(sn) + r'(?:\s|$)')
@@ -427,9 +437,14 @@ class Manager:
             self.s.command('configure terminal')
             try:
                 self.s.command(f'interface gpon-olt_{pon}')
-                self.s.command(f'no onu {onu_id}')
-            finally:
-                self.s.command('end')
+                self.s.command(f'no onu {onu_id}', timeout=60)
+            except (CliError, OSError) as exc:
+                self.s.close()
+                raise CliError(f'Deletion state uncertain at {pon}:{onu_id}; reconnect before retrying: {exc}') from exc
+            self.s.command('end')
+            remaining = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':pon}), timeout=60)
+            if re.search(r'(?im)^\s*onu\s+' + str(onu_id) + r'\s+type\s+', remaining):
+                raise CliError(f'ONU {pon}:{onu_id} still present; stopping')
             print(f'Removed {pon}:{onu_id} {sn}')
         self.refresh()
 
