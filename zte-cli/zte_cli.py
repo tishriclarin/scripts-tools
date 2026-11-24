@@ -391,7 +391,7 @@ class Manager:
             print(f'{pon}:{onu_id} SN={sn}')
         if preview or self.preview:
             print('PREVIEW ONLY: no OLT changes'); return
-        if input(f'Type DELETE {scope} to remove {len(targets)} ONUs: ').strip() != f'DELETE {scope}':
+        if input(f'Remove {len(targets)} registered ONUs from {scope}? Type yes to confirm: ').strip().lower() != 'yes':
             print('Cancelled'); return
         for pon, onu_id, sn in targets:
             actual = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':pon}))
@@ -688,7 +688,7 @@ def main():
         s.connect(args.user, password)
         mgr = Manager(s, cfg, args.mode == 'preview')
         mgr.refresh()
-        print('Commands: show cache|types|all|unreg|<sn>, reg <sn>|all, refresh, help, exit')
+        print('Commands: show cache|types|all|unreg|<sn>, reg <sn>|all [preview], unreg <rack/slot[/port]> [preview], refresh, help, exit')
         while True:
             try:
                 line = input('zte-cli> ').strip()
