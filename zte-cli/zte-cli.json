@@ -147,8 +147,20 @@
   },
   "remote_profile_binding": {
     "enabled": false,
-    "commands": [],
-    "verify": [],
-    "note": "Fill only after confirming C300 firmware syntax for binding remote ONU profile; disabled means no binding occurs."
+    "commands": [
+      "configure terminal",
+      "interface gpon-olt_{pon}",
+      "onu {onu_id} profile remote {remote_onu_profile}",
+      "exit",
+      "end"
+    ],
+    "verify": [
+      {
+        "name": "remote_profile_binding",
+        "command": "show pon onu onu-profile gpon-onu_{pon}:{onu_id}",
+        "regex": "(?i){remote_onu_profile}"
+      }
+    ],
+    "note": "C300 profile binding is configured under gpon-olt, NOT pon-onu-mng. Disabled by default because existing manual ONU-side services can conflict. Test one ONU first; verify show pon onu onu-profile output before enabling."
   }
 }
