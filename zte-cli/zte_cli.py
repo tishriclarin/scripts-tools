@@ -502,6 +502,11 @@ class Manager:
                     veip_raw = nids.get('VEIP-VLAN')
                     if veip_raw is None or not re.fullmatch(r'\\d{1,4}', veip_raw) or not 1 <= int(veip_raw) <= 4094:
                         raise CliError(f'Invalid or missing NIDS VEIP-VLAN for {onu.pon}: {veip_raw!r}')
+                    service_name = nids.get('SERVICE-NAME', 'HSI')
+                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,31}', service_name):
+                        raise CliError(f'Invalid NIDS SERVICE-NAME for {onu.pon}: {service_name!r}')
+                    values['service_name'] = service_name
+                    r.selected['service_name'] = service_name
                     values['veip_vlan'] = int(veip_raw)
                     r.selected['veip_vlan'] = values['veip_vlan']
                     pon_commands = pon_mng.get('commands', [])
