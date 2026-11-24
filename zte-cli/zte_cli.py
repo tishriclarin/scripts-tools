@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = '2.1.3'
+VERSION = '2.1.4'
 PROMPT = re.compile(rb'(?m)(?:^|\r?\n)[^\r\n]{0,100}(?:\(config[^)]*\))?[#>]\s*$')
 LOGIN = re.compile(rb'(?i)(?:username|login)\s*:\s*$')
 PASSWORD = re.compile(rb'(?i)password\s*:\s*$')
@@ -368,6 +368,7 @@ class Manager:
             for o in self.unreg:
                 print(f'{o.pon:<12} {o.sn:<16} {o.model or "MODEL UNKNOWN"}')
             if not self.unreg: print('(none)')
+            print(f'\nTotal unregistered ONUs: {len(self.unreg)}')
         elif arg == 'all':
             for o in sorted(self.registered, key=lambda x:(x.pon, x.sn)):
                 print(f'{o.pon:<12} {o.sn}  {o.raw}')
