@@ -170,7 +170,7 @@ def parse_vlans(text):
 def parse_vlan_onu_profiles(text):
     """Cache defined GPON ONU VLAN profile names, not per-ONU bindings."""
     return ordered_unique(m.group(1) for m in re.finditer(
-        r'(?im)^\\s*onu\\s+profile\\s+vlan\\s+([A-Za-z][A-Za-z0-9_-]{0,63})\\b',
+        r'(?im)^\s*onu\s+profile\s+vlan\s+([A-Za-z][A-Za-z0-9_-]{0,63})\b',
         text))
 
 
@@ -389,7 +389,7 @@ class Manager:
             print('No registered ONUs in scope'); return
         for pon, onu_id, sn in targets:
             print(f'{pon}:{onu_id} SN={sn}')
-        if preview:
+        if preview or self.preview:
             print('PREVIEW ONLY: no OLT changes'); return
         if input(f'Type DELETE {scope} to remove {len(targets)} ONUs: ').strip() != f'DELETE {scope}':
             print('Cancelled'); return
