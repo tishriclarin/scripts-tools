@@ -203,5 +203,16 @@
     "1/5": 152,
     "1/6": 153,
     "1/7": 154
+  },
+  "pon_onu_mng": {
+    "enabled": true,
+    "commands": [
+      "configure terminal",
+      "pon-onu-mng gpon-onu_{pon}:{onu_id}",
+      "vlan port veip_1 mode tag vlan 100",
+      "exit",
+      "end"
+    ],
+    "note": "DHCP-CVLAN100 remains configured/cached; no unverified vlan-profile binding is sent. VEIP tag VLAN 100 is the known command."
   }
 }
