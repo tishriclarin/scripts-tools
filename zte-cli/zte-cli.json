@@ -196,5 +196,12 @@
       "VLAN-PROFILE": "DHCP-CVLAN100",
       "REMOTE": "REMOTE-HGU-HSI100-TR0694020"
     }
+  },
+  "gpon_card_service_vlans": {
+    "1/3": 150,
+    "1/4": 151,
+    "1/5": 152,
+    "1/6": 153,
+    "1/7": 154
   }
 }
