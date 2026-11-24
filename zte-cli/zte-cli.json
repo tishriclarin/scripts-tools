@@ -166,35 +166,40 @@
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
       "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
-      "VEIP-VLAN": 100
+      "VEIP-VLAN": 100,
+      "SERVICE-NAME": "HSI"
     },
     "151": {
       "VLAN": 151,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
       "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
-      "VEIP-VLAN": 100
+      "VEIP-VLAN": 100,
+      "SERVICE-NAME": "HSI"
     },
     "152": {
       "VLAN": 152,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
       "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
-      "VEIP-VLAN": 100
+      "VEIP-VLAN": 100,
+      "SERVICE-NAME": "HSI"
     },
     "153": {
       "VLAN": 153,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
       "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
-      "VEIP-VLAN": 100
+      "VEIP-VLAN": 100,
+      "SERVICE-NAME": "HSI"
     },
     "154": {
       "VLAN": 154,
       "TR69": 4020,
       "ONU-TYPE": "GENERIC-HGU",
       "REMOTE": "REMOTE-HGU-HSI100-TR0694020",
-      "VEIP-VLAN": 100
+      "VEIP-VLAN": 100,
+      "SERVICE-NAME": "HSI"
     }
   },
   "gpon_card_service_vlans": {
@@ -209,10 +214,12 @@
     "commands": [
       "configure terminal",
       "pon-onu-mng gpon-onu_{pon}:{onu_id}",
-      "vlan port veip_1 mode tag vlan {veip_vlan}",
+      "service {service_name} gemport 1 cos 0 vlan {veip_vlan}",
+      "vlan port eth_0/1 mode tag vlan {veip_vlan}",
+      "loop-detect ethuni eth_0/1 enable",
       "exit",
       "end"
     ],
-    "note": "VEIP VLAN is read from NIDS VEIP-VLAN (100). DHCP-CVLAN100 remains defined on the OLT but is not bound by an unverified command."
+    "note": "NIDS VEIP-VLAN supplies the customer-facing VLAN for HSI GEM service and eth_0/1 tagging; SERVICE-NAME defaults to HSI in NIDS. OLT service VLAN remains NIDS VLAN (150-154)."
   }
 }
