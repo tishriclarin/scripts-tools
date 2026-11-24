@@ -169,7 +169,7 @@
       {
         "name": "vlan_profile_binding",
         "command": "show running-config interface gpon-olt_{pon}",
-        "regex": "(?m)^\\\\s*onu\\\\s+{onu_id}\\\\s+profile\\\\s+vlan\\\\s+{vlan_onu_profile}\\\\s*$"
+        "regex": "(?m)^\\s*onu\\s+{onu_id}\\s+profile\\s+vlan\\s+{vlan_onu_profile}\\s*$"
       }
     ]
   }
