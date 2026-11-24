@@ -14,9 +14,9 @@ mkdir -p "$BIN_DIR" "$BACKUP_DIR"
 echo "Fetching fresh ZTE-CLI source..."
 git clone --depth 1 "$REPO_URL" "$WORK/repo"
 SOURCE="$WORK/repo/zte-cli"
-python3 -m py_compile "$SOURCE/zte_cli.py"
+PYTHONPYCACHEPREFIX="$WORK/pycache" python3 -m py_compile "$SOURCE/zte_cli.py"
 if [[ -f "$SOURCE/test_cache.py" ]]; then
-  (cd "$SOURCE" && python3 -m unittest -v test_cache)
+  (cd "$SOURCE" && PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_cache)
 fi
 if [[ -d "$INSTALL_DIR" ]]; then
   STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -29,6 +29,8 @@ if [[ -d "$INSTALL_DIR" ]]; then
 fi
 mkdir -p "$INSTALL_DIR"
 cp -a "$SOURCE/." "$INSTALL_DIR/"
+find "$INSTALL_DIR" -type d \( -name __pycache__ -o -name .pytest_cache -o -name .mypy_cache -o -name .ruff_cache \) -prune -exec rm -rf -- {} +
+find "$INSTALL_DIR" -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
 cat > "$BIN_DIR/zte-cli" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
