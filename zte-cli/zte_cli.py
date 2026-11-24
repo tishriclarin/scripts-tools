@@ -360,326 +360,14 @@ class Manager:
                 print(self.s.command(render(self.cfg['discovery']['onu_config'], {'pon':o.pon, 'sn':sn})))
 
     def unregister(self, scope, preview=False):
-        """Delete only registered ONUs on a specific PON or GPON module."""
+        """Remove registered ONUs on a selected PON or GPON module only."""
         if not re.fullmatch(r'\d+/\d+(?:/\d+)?', scope):
-            raise CliError('Usage: unreg <rack/slot[/port]> [preview]')
+            raise CliError('Usage: unreg <1/3/1|1/3> [preview]')
         self.refresh()
         blocks = {}
         current = None
         for line in self.running.splitlines():
-            match = re.match(r'^\s*interface\s+gpon-olt_(\d+/\d+/\d+)\s*
-        self.refresh()
-        targets = self.unreg if arg == 'all' else [o for o in self.unreg if o.sn == arg.upper()]
-        if not targets:
-            print('No matching unregistered ONU found'); return
-        self.reserved_ids = {}
-        results = []
-        plans = []
-        # Phase 1: build and reserve the entire batch before any changes.
-        for i, onu in enumerate(targets, 1):
-            r = Result(onu.sn, onu.pon, onu.model)
-            results.append(r)
-            print(f'[PLAN {i}/{len(targets)}] {onu.sn} {onu.pon}')
-            try:
-                if not self.types:
-                    raise CliError('Cannot read configured ONU types from OLT (discovery failure)')
-                nids = parse_nids(self.pon_descriptions.get(onu.pon, ''))
-                # Card-to-service-VLAN mapping is authoritative for this deployment.
-                # Reject conflicting descriptions before sending any OLT commands.
-                card = '/'.join(onu.pon.split('/')[:2])
-                card_vlan = self.cfg.get('gpon_card_service_vlans', {}).get(card)
-                if card_vlan is not None:
-                    card_vlan = int(card_vlan)
-                    expected_id = str(card_vlan)
-                    if 'NIDS' in nids and nids['NIDS'] != expected_id:
-                        raise CliError(
-                            f'PON {onu.pon} NIDS {nids["NIDS"]!r} conflicts with '
-                            f'card {card} VLAN {card_vlan}; refusing provisioning')
-                    if 'VLAN' in nids and nids['VLAN'] != expected_id:
-                        raise CliError(
-                            f'PON {onu.pon} VLAN {nids["VLAN"]!r} conflicts with '
-                            f'card {card} VLAN {card_vlan}; refusing provisioning')
-                    nids.setdefault('NIDS', expected_id)
-                if 'NIDS' in nids:
-                    profile_id = nids['NIDS']
-                    if not re.fullmatch(r'[A-Za-z0-9-]{1,32}', profile_id):
-                        raise CliError(f'Invalid NIDS profile ID: {profile_id!r}')
-                    stored = self.cfg.get('nids_profiles', {}).get(profile_id)
-                    if not isinstance(stored, dict):
-                        raise CliError(f'NIDS profile {profile_id!r} is not defined in zte-cli.json')
-                    if any(k.upper() != k or not isinstance(v, (str, int)) for k, v in stored.items()):
-                        raise CliError(f'Invalid NIDS profile {profile_id!r}: expected uppercase keys and string/integer values')
-                    nids = {**{k: str(v) for k, v in stored.items()}, **{k: v for k, v in nids.items() if k != 'NIDS'}}
-                r.onu_type, type_source = resolve_cached(nids.get('ONU-TYPE') or nids.get('TYPE'), self.types, 'ONU-TYPE')
-                if onu.model and onu.model in self.types and not (nids.get('ONU-TYPE') or nids.get('TYPE')):
-                    r.onu_type, type_source = onu.model, 'MODEL-EXACT'
-                # Explicitly configured names are valid when no assignment can be discovered.
-                defaults = self.cfg['profiles'].get(r.onu_type) or self.cfg['profiles'].get('default', {})
-                variables = defaults.get('variables', {})
-                ingress_options = self.traffic_profiles['ingress']
-                egress_options = self.traffic_profiles['egress']
-                ingress_name = nids.get('TRAFFIC-INGRESS') or variables.get('traffic_down')
-                egress_name = nids.get('TRAFFIC-EGRESS') or variables.get('traffic_up')
-                if not ingress_options and ingress_name:
-                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', ingress_name):
-                        raise CliError('Invalid configured TRAFFIC-INGRESS name')
-                    ingress, in_source = ingress_name, 'CONFIG'
-                else:
-                    ingress, in_source = resolve_cached(nids.get('TRAFFIC-INGRESS'), ingress_options, 'TRAFFIC-INGRESS')
-                if not egress_options and egress_name:
-                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', egress_name):
-                        raise CliError('Invalid configured TRAFFIC-EGRESS name')
-                    egress, out_source = egress_name, 'CONFIG'
-                else:
-                    egress, out_source = resolve_cached(nids.get('TRAFFIC-EGRESS'), egress_options, 'TRAFFIC-EGRESS')
-                r.selected = {'onu_type':r.onu_type, 'type_source':type_source, 'traffic_ingress':ingress, 'traffic_egress':egress}
-                print('  Resolved:', r.selected)
-                profile = self.cfg['profiles'].get(r.onu_type) or self.cfg['profiles'].get('default')
-                if not profile:
-                    raise CliError(f'No provisioning profile for {r.onu_type} (or default)')
-                # PON config must be scoped to the requested interface only.
-                pon_config = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':onu.pon}))
-                if not re.search(r'(?im)^\s*interface\s+gpon-olt_' + re.escape(onu.pon) + r'\b', pon_config):
-                    raise CliError('PON configuration response does not identify requested interface')
-                occupied = extract_occupied_ids(pon_config, onu.pon)
-                occupied.update(self.reserved_ids.get(onu.pon, set()))
-                if not occupied and not self.cfg.get('allow_empty_pon', False):
-                    if not pon_config.strip() or re.search(r'(?i)(invalid|error|not found|unsupported)', pon_config):
-                        raise CliError('Cannot validate occupied ONU IDs; empty/invalid PON config')
-                    print('  PON configuration contains no registered ONU IDs; allocating first free ID')
-                max_id = int(self.cfg.get('max_onu_id', 128))
-                r.onu_id = next((n for n in range(1,max_id+1) if n not in occupied), None)
-                if r.onu_id is None: raise CliError('No free ONU ID')
-                # Reserve IDs even when a later command fails; never reuse within a batch.
-                self.reserved_ids.setdefault(onu.pon, set()).add(r.onu_id)
-                values = {**profile.get('variables', {}), 'sn':onu.sn, 'pon':onu.pon,
-                          'onu_id':r.onu_id, 'onu_type':r.onu_type,
-                          'traffic_down':ingress, 'traffic_up':egress}
-                # Do not invent service VLANs; require an explicit PON mapping or NIDS VLAN.
-                explicit_vlan = nids.get('VLAN')
-                if explicit_vlan:
-                    match = re.fullmatch(r'(?:VLAN)?(\d{1,4})', explicit_vlan, re.I)
-                    if not match: raise CliError(f'Invalid numeric NIDS VLAN: {explicit_vlan}')
-                    values['service_vlan'] = int(match.group(1))
-                elif onu.pon in self.cfg.get('pon_service_vlans', {}):
-                    values['service_vlan'] = self.cfg['pon_service_vlans'][onu.pon]
-                else:
-                    raise CliError(f'No service VLAN defined for PON {onu.pon}; set NIDS VLAN or pon_service_vlans')
-                if not 1 <= int(values['service_vlan']) <= 4094:
-                    raise CliError('Service VLAN outside 1..4094')
-                if int(values['service_vlan']) not in self.vlans:
-                    raise CliError(f'Service VLAN {values["service_vlan"]} is not defined on OLT')
-                if not self.vlans[int(values['service_vlan'])]['dhcp_snooping']:
-                    print(f'  WARNING: VLAN {values["service_vlan"]} has no cached DHCP snooping configuration')
-                tr69 = nids.get('TR69')
-                if tr69 is not None:
-                    if not re.fullmatch(r'\d{1,4}', tr69) or not 1 <= int(tr69) <= 4094:
-                        raise CliError(f'Invalid NIDS TR69 VLAN: {tr69}')
-                    values['tr069_user_vlan'] = int(tr69)
-                r.selected.update({'service_vlan':values['service_vlan'],
-                                   'tr069_user_vlan':values['tr069_user_vlan']})
-                # Remote profile is distinct from the ONU hardware type.
-                remote_name = nids.get('REMOTE') or nids.get('REMOTE-PROFILE') or self.cfg.get('naming', {}).get('remote_onu_profile')
-                if remote_name:
-                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}', remote_name):
-                        raise CliError(f'Invalid remote ONU profile name: {remote_name}')
-                    values['remote_onu_profile'] = remote_name
-                    r.selected['remote_onu_profile'] = remote_name
-                    remote_block = re.search(
-                        r'(?im)^onu-profile\s+gpon\s+remote\s+' + re.escape(remote_name) + r'\s*$',
-                        self.running)
-                    if not remote_block:
-                        raise CliError(f'Remote ONU profile {remote_name} not found in captured running-config; refresh/inspect OLT')
-                commands = [render(c, values) for c in profile['commands']]
-                if remote_name:
-                    remote_cfg = self.cfg.get('remote_profile_binding', {})
-                    if remote_cfg.get('enabled', False):
-                        binding_commands = remote_cfg.get('commands', [])
-                        verification = remote_cfg.get('verify', [])
-                        if not binding_commands or not verification:
-                            raise CliError('Remote profile binding requires verified commands and verification checks')
-                        # Bind within the existing gpon-olt interface, immediately after ONU registration.
-                        # Never open a second configure session or append commands after 'end'.
-                        binding = [render(c, values) for c in binding_commands]
-                        if any(c.strip().lower() in ('configure terminal', 'end') for c in binding):
-                            raise CliError('remote_profile_binding.commands must contain only interface-local commands')
-                        registration = render('onu {onu_id} type {onu_type} sn {sn}', values)
-                        try:
-                            insert_at = commands.index(registration) + 1
-                        except ValueError:
-                            raise CliError('Cannot locate ONU registration command for remote profile binding')
-                        # VLAN is configured through pon-onu-mng, not a gpon-olt VLAN profile binding.
-                        commands[insert_at:insert_at] = binding
-                    else:
-                        print(f'  NOTICE: remote profile {remote_name} exists; binding is NOT enabled or applied')
-                pon_mng = self.cfg.get('pon_onu_mng', {})
-                if pon_mng.get('enabled', False):
-                    veip_raw = nids.get('VEIP-VLAN')
-                    if veip_raw is None or not re.fullmatch(r'\d{1,4}', veip_raw) or not 1 <= int(veip_raw) <= 4094:
-                        raise CliError(f'Invalid or missing NIDS VEIP-VLAN for {onu.pon}: {veip_raw!r}')
-                    service_name = nids.get('SERVICE-NAME', 'HSI')
-                    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,31}', service_name):
-                        raise CliError(f'Invalid NIDS SERVICE-NAME for {onu.pon}: {service_name!r}')
-                    values['service_name'] = service_name
-                    r.selected['service_name'] = service_name
-                    values['veip_vlan'] = int(veip_raw)
-                    r.selected['veip_vlan'] = values['veip_vlan']
-                    pon_commands = pon_mng.get('commands', [])
-                    if not pon_commands:
-                        raise CliError('pon_onu_mng enabled without commands')
-                    if not commands or commands[-1].strip().lower() != 'end':
-                        raise CliError('Expected provisioning commands to end before pon-onu-mng')
-                    commands.extend(render(c, values) for c in pon_commands)
-                if self.cfg.get('enable_wan_dhcp', False):
-                    # Firmware-specific command is opt-in and requires explicit validation.
-                    wan = self.cfg.get('wan_commands', [])
-                    if any('{vlan_profile}' in c for c in wan):
-                        raise CliError('WAN DHCP template still requires vlan-profile; configure WAN mapping separately')
-                    if not wan: raise CliError('WAN DHCP enabled but wan_commands is empty')
-                    commands += [render(c, values) for c in wan]
-                if not commands or any(not c.strip() for c in commands):
-                    raise CliError('Empty provisioning command')
-                r.commands = commands
-                plans.append((onu, r, values, profile, remote_name))
-            except (CliError, KeyError, ValueError, OSError) as exc:
-                r.state = 'FAILED'
-                r.error = str(exc)
-                print(f'  PLAN FAILED: {exc}')
-                break
-        if len(plans) != len(targets):
-            print('ABORT: no ONU commands applied because batch planning failed')
-            return
-        if preview or self.preview:
-            for onu, r, values, profile, remote_name in plans:
-                print(f'\n[PREVIEW] {onu.sn} {onu.pon}:{r.onu_id}')
-                print('\n'.join('  ' + command for command in r.commands))
-                r.state = 'PREVIEW'
-        else:
-            # Phase 2: execute each fully prepared ONU plan, never reallocating IDs.
-            for onu, r, values, profile, remote_name in plans:
-                print(f'[APPLY] {onu.sn} {onu.pon}:{r.onu_id}')
-                try:
-                    registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
-                    registration_verified = False
-                    for command in commands:
-                        self.s.command(command, timeout=self.cfg.get('command_timeout', 20))
-                        r.executed += 1
-                        if command == registration_command:
-                            # Fail closed before touching gpon-onu or pon-onu-mng.
-                            actual = self.s.command(render(self.cfg['discovery']['pon_config'], values))
-                            expected = re.compile(r'(?im)^\s*onu\s+' + str(r.onu_id) +
-                                r'\s+type\s+' + re.escape(r.onu_type) +
-                                r'\s+sn\s+' + re.escape(onu.sn) + r'(?:\s|$)')
-                            registration_verified = bool(expected.search(actual))
-                            r.verification['registration'] = {
-                                'ok': registration_verified,
-                                'command': render(self.cfg['discovery']['pon_config'], values)
-                            }
-                            if not registration_verified:
-                                raise CliError(f'ONU registration not confirmed for {onu.sn} at {onu.pon}:{r.onu_id}; aborting batch')
-                    if not registration_verified:
-                        raise CliError('Provisioning template omitted ONU registration; aborting batch')
-                    # Read back and require explicit verification evidence.
-                    checks = list(profile.get('verify', []))
-                    if remote_name and self.cfg.get('remote_profile_binding', {}).get('enabled', False):
-                        checks += self.cfg['remote_profile_binding']['verify']
-                    if not checks:
-                        raise CliError('No verification checks defined for profile')
-                    all_ok = True
-                    for check in checks:
-                        output = self.s.command(render(check['command'], values))
-                        pattern = render(check['regex'], values)
-                        ok = bool(re.search(pattern, output, re.I | re.M))
-                        r.verification[check['name']] = {'ok':ok, 'command':render(check['command'], values)}
-                        if not ok: all_ok = False
-                    r.state = 'SUCCESS' if all_ok else 'VERIFY_FAILED'
-                    if not all_ok:
-                        r.error = 'One or more running-config checks did not match'
-                    else:
-                        if self.cfg.get('save_after_verify', True):
-                            self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
-                except (CliError, KeyError, ValueError, OSError) as exc:
-                    if r.executed:
-                        try: self.s.command('end')
-                        except (CliError, OSError): pass
-                    r.state = 'PARTIAL' if r.executed else 'FAILED'
-                    r.error = str(exc)
-                print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
-                if r.state != 'SUCCESS':
-                    print('ABORT: remaining preplanned ONUs not attempted')
-                    break
-        counts = {state:sum(r.state == state for r in results) for state in ('SUCCESS','PARTIAL','FAILED','VERIFY_FAILED','SKIPPED','PREVIEW')}
-        print('\nSUMMARY: ' + '  '.join(f'{k}={v}' for k,v in counts.items()))
-        for r in results:
-            if r.state in ('PARTIAL','FAILED','VERIFY_FAILED','SKIPPED'):
-                print(f'  {r.sn}: {r.state} - {r.error}')
-        report_dir = Path(self.cfg.get('report_dir', 'reports'))
-        report_dir.mkdir(parents=True, exist_ok=True)
-        name = report_dir / ('zte-cli-' + dt.datetime.now().strftime('%Y%m%d-%H%M%S') + '.json')
-        from dataclasses import asdict
-        name.write_text(json.dumps({'preview':self.preview, 'timestamp':dt.datetime.now(dt.timezone.utc).isoformat(), 'results':[asdict(r) for r in results], 'counts':counts}, indent=2))
-        print(f'Report: {name}')
-        if not (preview or self.preview):
-            self.refresh()
-
-def main():
-    parser = argparse.ArgumentParser(description='ZTE C300 ONU management CLI')
-    parser.add_argument('mode', nargs='?', choices=['preview'], help='preview: print planned registration commands; default applies them')
-    parser.add_argument('--host', required=True, help='OLT management IP/hostname')
-    parser.add_argument('--port', type=int, default=23)
-    parser.add_argument('--user', required=True)
-    parser.add_argument('--config', default='zte-cli.json')
-    args = parser.parse_args()
-    cfg = load_settings(args.config)
-    print('*' * 49)
-    print(f'  ZTE-CLI version {VERSION}')
-    print('  Date: ' + dt.date.today().isoformat())
-    print('  By Tishri Clarin')
-    print('  ZTE GPON ONU discovery, registration,')
-    print('  provisioning and configuration verification')
-    print('*' * 49)
-    print('MODE: ' + ('PREVIEW (read-only)' if args.mode == 'preview' else 'APPLY (changes OLT)'))
-    password = getpass.getpass('OLT password: ')
-    s = TelnetSession(args.host, args.port, cfg.get('timeout',15))
-    try:
-        s.connect(args.user, password)
-        mgr = Manager(s, cfg, args.mode == 'preview')
-        mgr.refresh()
-        print('Commands: show cache|types|all|unreg|<sn>, reg <sn>|all, refresh, help, exit')
-        while True:
-            try:
-                line = input('zte-cli> ').strip()
-                if not line: continue
-                cmd, _, arg = line.partition(' ')
-                cmd, arg = cmd.lower(), arg.strip()
-                if cmd in ('exit','quit'): break
-                elif cmd == 'help': print('show cache | show types | show all | show unreg | show <onu-sn>\nreg <onu-sn> [preview] | reg all [preview] | unreg <1/3/1|1/3> [preview] | refresh | exit')
-                elif cmd == 'refresh': mgr.refresh()
-                elif cmd == 'unreg':
-                    tokens = arg.split()
-                    if len(tokens) not in (1, 2) or (len(tokens) == 2 and tokens[1].lower() != 'preview'):
-                        raise CliError('Usage: unreg <1/3/1|1/3> [preview]')
-                    mgr.unregister(tokens[0], preview=len(tokens) == 2)
-                elif cmd == 'show': mgr.show(arg)
-                elif cmd == 'reg' and arg and (arg.split()[0] == 'all' or SN_RE.fullmatch(arg.split()[0])):
-                    tokens = arg.split()
-                    if len(tokens) > 2 or (len(tokens) == 2 and tokens[1].lower() != 'preview'):
-                        raise CliError('Usage: reg all [preview] | reg <serial> [preview]')
-                    mgr.reg(tokens[0], preview=len(tokens) == 2)
-                else: print('Unknown command. Type help.')
-            except (CliError, KeyError, ValueError) as exc:
-                print('ERROR:', exc)
-            except (EOFError, KeyboardInterrupt):
-                print(); break
-    finally:
-        s.close()
-
-if __name__ == '__main__':
-    try: main()
-    except (CliError, OSError, ValueError, json.JSONDecodeError) as exc:
-        print('FATAL:', exc, file=sys.stderr)
-        sys.exit(1)
-, line, re.I)
+            match = re.match(r'^\s*interface\s+gpon-olt_(\d+/\d+/\d+)\s*$', line, re.I)
             if match:
                 current = match.group(1)
                 blocks[current] = []
@@ -687,9 +375,7 @@ if __name__ == '__main__':
                 current = None
             elif current:
                 blocks[current].append(line)
-        ports = [p for p in blocks if p == scope or ('/' not in scope[scope.rfind('/')+1:] and p.startswith(scope + '/'))]
-        if scope.count('/') == 2:
-            ports = [p for p in blocks if p == scope]
+        ports = [p for p in blocks if p == scope] if scope.count('/') == 2 else [p for p in blocks if p.startswith(scope + '/')]
         if not ports:
             raise CliError('No matching PON configuration found; refusing deletion')
         targets = []
@@ -699,22 +385,18 @@ if __name__ == '__main__':
                 if match:
                     targets.append((pon, int(match.group(1)), match.group(2)))
         if not targets:
-            print('No registered ONUs found in selected scope'); return
-        print(f'[UNREG] scope={scope}; registered ONUs={len(targets)}')
+            print('No registered ONUs in scope'); return
         for pon, onu_id, sn in targets:
-            print(f'  {pon}:{onu_id} SN={sn}')
+            print(f'{pon}:{onu_id} SN={sn}')
         if preview:
-            print('PREVIEW ONLY: no OLT changes')
-            return
-        confirm = input(f'Type DELETE {scope} to remove these {len(targets)} registered ONUs: ').strip()
-        if confirm != f'DELETE {scope}':
+            print('PREVIEW ONLY: no OLT changes'); return
+        if input(f'Type DELETE {scope} to remove {len(targets)} ONUs: ').strip() != f'DELETE {scope}':
             print('Cancelled'); return
         for pon, onu_id, sn in targets:
-            # Check the exact mapping again immediately before deletion.
-            output = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':pon}))
+            actual = self.s.command(render(self.cfg['discovery']['pon_config'], {'pon':pon}))
             expected = re.compile(r'(?im)^\s*onu\s+' + str(onu_id) +
                 r'\s+type\s+\S+\s+sn\s+' + re.escape(sn) + r'(?:\s|$)')
-            if not expected.search(output):
+            if not expected.search(actual):
                 raise CliError(f'ONU mapping changed at {pon}:{onu_id}; stopping')
             self.s.command('configure terminal')
             try:
@@ -722,7 +404,7 @@ if __name__ == '__main__':
                 self.s.command(f'no onu {onu_id}')
             finally:
                 self.s.command('end')
-            print(f'  Removed {pon}:{onu_id} {sn}')
+            print(f'Removed {pon}:{onu_id} {sn}')
         self.refresh()
 
     def reg(self, arg, preview=False):
