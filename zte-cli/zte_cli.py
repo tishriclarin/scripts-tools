@@ -359,17 +359,19 @@ class Manager:
             for o in matches:
                 print(self.s.command(render(self.cfg['discovery']['onu_config'], {'pon':o.pon, 'sn':sn})))
 
-    def reg(self, arg):
-        self.refresh()  # snapshot once for the entire batch
+    def reg(self, arg, preview=False):
+        self.refresh()
         targets = self.unreg if arg == 'all' else [o for o in self.unreg if o.sn == arg.upper()]
         if not targets:
             print('No matching unregistered ONU found'); return
-        results = []
         self.reserved_ids = {}
+        results = []
+        plans = []
+        # Phase 1: build and reserve the entire batch before any changes.
         for i, onu in enumerate(targets, 1):
             r = Result(onu.sn, onu.pon, onu.model)
             results.append(r)
-            print(f'[{i}/{len(targets)}] {onu.sn} {onu.pon}')
+            print(f'[PLAN {i}/{len(targets)}] {onu.sn} {onu.pon}')
             try:
                 if not self.types:
                     raise CliError('Cannot read configured ONU types from OLT (discovery failure)')
@@ -530,9 +532,25 @@ class Manager:
                 if not commands or any(not c.strip() for c in commands):
                     raise CliError('Empty provisioning command')
                 r.commands = commands
-                if self.preview:
-                    print('\n'.join('  ' + c for c in commands))
-                    r.state = 'PREVIEW'; continue
+                plans.append((onu, r, values, profile, remote_name))
+            except (CliError, KeyError, ValueError, OSError) as exc:
+                r.state = 'FAILED'
+                r.error = str(exc)
+                print(f'  PLAN FAILED: {exc}')
+                break
+        if len(plans) != len(targets):
+            print('ABORT: no ONU commands applied because batch planning failed')
+            return
+        if preview or self.preview:
+            for onu, r, values, profile, remote_name in plans:
+                print(f'\n[PREVIEW] {onu.sn} {onu.pon}:{r.onu_id}')
+                print('\n'.join('  ' + command for command in r.commands))
+                r.state = 'PREVIEW'
+        else:
+            # Phase 2: execute each fully prepared ONU plan, never reallocating IDs.
+            for onu, r, values, profile, remote_name in plans:
+                print(f'[APPLY] {onu.sn} {onu.pon}:{r.onu_id}')
+                try:
                 registration_command = render('onu {onu_id} type {onu_type} sn {sn}', values)
                 registration_verified = False
                 for command in commands:
@@ -572,21 +590,16 @@ class Manager:
                 else:
                     if self.cfg.get('save_after_verify', True):
                         self.s.command(self.cfg.get('save_command', 'write'), timeout=60)
-            except (CliError, KeyError, ValueError, socket.error) as exc:
-                # A failed command may leave the OLT inside a configuration interface.
-                # Stop the batch; never issue another configure terminal blindly.
-                if r.executed:
-                    try:
-                        self.s.command('end')
-                    except (CliError, OSError):
-                        pass
-                abort_batch = r.executed > 0
-                r.state = 'PARTIAL' if r.executed else ('FAILED' if r.commands else 'SKIPPED')
-                r.error = str(exc)
-            print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
-            if r.state == 'VERIFY_FAILED' or ('abort_batch' in locals() and abort_batch):
-                print('  ABORT: partial provisioning; remaining ONUs not attempted')
-                break
+                except (CliError, KeyError, ValueError, OSError) as exc:
+                    if r.executed:
+                        try: self.s.command('end')
+                        except (CliError, OSError): pass
+                    r.state = 'PARTIAL' if r.executed else 'FAILED'
+                    r.error = str(exc)
+                print(f'  {r.state}' + (f': {r.error}' if r.error else ''))
+                if r.state != 'SUCCESS':
+                    print('ABORT: remaining preplanned ONUs not attempted')
+                    break
         counts = {state:sum(r.state == state for r in results) for state in ('SUCCESS','PARTIAL','FAILED','VERIFY_FAILED','SKIPPED','PREVIEW')}
         print('\nSUMMARY: ' + '  '.join(f'{k}={v}' for k,v in counts.items()))
         for r in results:
@@ -635,8 +648,11 @@ def main():
                 elif cmd == 'help': print('show cache | show types | show all | show unreg | show <onu-sn>\nreg <onu-sn> | reg all | refresh | exit')
                 elif cmd == 'refresh': mgr.refresh()
                 elif cmd == 'show': mgr.show(arg)
-                elif cmd == 'reg' and (arg == 'all' or SN_RE.fullmatch(arg)):
-                    mgr.reg(arg)
+                elif cmd == 'reg' and (arg.split()[0:1] == ['all'] or SN_RE.fullmatch(arg.split()[0]) if arg else False):
+                    tokens = arg.split()
+                    if len(tokens) > 2 or (len(tokens) == 2 and tokens[1].lower() != 'preview'):
+                        raise CliError('Usage: reg all [preview] | reg <serial> [preview]')
+                    mgr.reg(tokens[0], preview=len(tokens) == 2)
                 else: print('Unknown command. Type help.')
             except (CliError, KeyError, ValueError) as exc:
                 print('ERROR:', exc)
