@@ -372,6 +372,16 @@ class Manager:
                 if not self.types:
                     raise CliError('Cannot read configured ONU types from OLT (discovery failure)')
                 nids = parse_nids(self.pon_descriptions.get(onu.pon, ''))
+                if 'NIDS' in nids:
+                    profile_id = nids['NIDS']
+                    if not re.fullmatch(r'[A-Za-z0-9-]{1,32}', profile_id):
+                        raise CliError(f'Invalid NIDS profile ID: {profile_id!r}')
+                    stored = self.cfg.get('nids_profiles', {}).get(profile_id)
+                    if not isinstance(stored, dict):
+                        raise CliError(f'NIDS profile {profile_id!r} is not defined in zte-cli.json')
+                    if any(k.upper() != k or not isinstance(v, (str, int)) for k, v in stored.items()):
+                        raise CliError(f'Invalid NIDS profile {profile_id!r}: expected uppercase keys and string/integer values')
+                    nids = {**{k: str(v) for k, v in stored.items()}, **{k: v for k, v in nids.items() if k != 'NIDS'}}
                 r.onu_type, type_source = resolve_cached(nids.get('ONU-TYPE') or nids.get('TYPE'), self.types, 'ONU-TYPE')
                 if onu.model and onu.model in self.types and not (nids.get('ONU-TYPE') or nids.get('TYPE')):
                     r.onu_type, type_source = onu.model, 'MODEL-EXACT'
